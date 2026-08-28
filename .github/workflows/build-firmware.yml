@@ -64,6 +64,8 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           cd xiaozhi
+          printf '%s\n' "$FW_VERSION" > version.txt
+          echo "Firmware app version: $(cat version.txt)"
           python scripts/build.py robot-ai-private-v1 \
             --name robot-ai-private-v1 \
             --language vi-VN \
@@ -88,6 +90,7 @@ jobs:
           grep -a -q "ST7789-1.3-240x240" "$BIN"
           grep -a -q "VL6180X" "$BIN"
           grep -a -q "$PRIVATE_OTA_URL" "$BIN"
+          grep -a -q "$FW_VERSION" xiaozhi/build/xiaozhi.bin
           grep -q 'CONFIG_USE_HOTSPOT_WIFI_PROVISIONING=y' xiaozhi/sdkconfig
           grep -q "CONFIG_OTA_URL=\"$PRIVATE_OTA_URL\"" xiaozhi/sdkconfig
           echo "Robot AI Private V6 verification PASS"
