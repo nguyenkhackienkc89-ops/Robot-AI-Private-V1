@@ -593,7 +593,7 @@ private:
             "backward=lùi, left=quay trái, right=quay phải, "
             "spin_left=quay một vòng trái, spin_right=quay một vòng phải, stop=dừng. "
             "Nếu người dùng nói quay 1 vòng/quay một vòng thì dùng spin_right.",
-            PropertyList({
+            PropertyList(std::vector<Property>{
                 Property("action",kPropertyTypeString),
                 Property("speed",kPropertyTypeInteger,20,65),
                 Property("duration_ms",kPropertyTypeInteger,80,3200)
@@ -613,24 +613,24 @@ private:
             });
 
         m.AddTool("self.robot.stop","Dừng khẩn cấp hai động cơ.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       motors_.Stop(); return true;
                   });
 
         m.AddTool("self.robot.wiggle","Lắc người nhẹ để biểu cảm vui/cà khịa.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       motors_.Wiggle(); return true;
                   });
 
         m.AddTool("self.robot.distance","Đọc khoảng cách TOF050C theo mm.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       return tof_.DistanceMm();
                   });
 
         m.AddTool(
             "self.robot.calibrate_spin360",
             "Hiệu chuẩn thời gian quay 360 độ. milliseconds 600..3000; lưu NVS.",
-            PropertyList({Property("milliseconds",kPropertyTypeInteger,600,3000)}),
+            PropertyList(std::vector<Property>{Property("milliseconds",kPropertyTypeInteger,600,3000)}),
             [this](const PropertyList& p)->ReturnValue{
                 motors_.SetSpin360Ms(p["milliseconds"].value<int>());
                 return motors_.Spin360Ms();
@@ -639,7 +639,7 @@ private:
         m.AddTool(
             "self.robot.face",
             "Biểu cảm mắt: idle, listen, talk, think, tease, surprise, angry.",
-            PropertyList({Property("mode",kPropertyTypeString)}),
+            PropertyList(std::vector<Property>{Property("mode",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 display_->Manual(ParseFace(p["mode"].value<std::string>()),2800);
                 return true;
@@ -648,7 +648,7 @@ private:
         m.AddTool(
             "self.robot.lights",
             "Đèn trang trí: off, left, right, both.",
-            PropertyList({Property("mode",kPropertyTypeString)}),
+            PropertyList(std::vector<Property>{Property("mode",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 auto s=p["mode"].value<std::string>();
                 if(s=="left") lights_.Set(true,false);
@@ -664,7 +664,7 @@ private:
             "open_youtube, youtube_search, web_search, open_word, word_write, "
             "open_finder, open_app, type_text, volume_up, volume_down, play_pause. "
             "Không hỗ trợ xóa file, shell tùy ý, mật khẩu hay thanh toán.",
-            PropertyList({
+            PropertyList(std::vector<Property>{
                 Property("action",kPropertyTypeString),
                 Property("value",kPropertyTypeString)
             }),
