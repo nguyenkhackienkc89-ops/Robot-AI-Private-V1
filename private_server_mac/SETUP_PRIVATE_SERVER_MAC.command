@@ -142,11 +142,11 @@ fi
 
 cat > "$HERE/PRIVATE_SERVER_INFO.txt" <<EOF
 MAC_IP=$MAC_IP
-	OTA_URL=http://$MAC_IP:8003/xiaozhi/ota/
-	WEBSOCKET_URL=ws://$MAC_IP:8000/xiaozhi/v1/
-	OLLAMA_MODEL=tieude:qwen3-8b
-	TTS_VOICE=vi-VN-NamMinhNeural
-	EOF
+OTA_URL=http://$MAC_IP:8003/xiaozhi/ota/
+WEBSOCKET_URL=ws://$MAC_IP:8000/xiaozhi/v1/
+OLLAMA_MODEL=tieude:qwen3-8b
+TTS_VOICE=vi-VN-NamMinhNeural
+EOF
 
 echo
 echo "========================================================"
