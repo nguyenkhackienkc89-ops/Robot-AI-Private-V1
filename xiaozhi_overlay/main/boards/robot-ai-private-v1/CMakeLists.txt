@@ -1,1 +1,0 @@
-idf_component_register(REQUIRES esp_http_client esp_driver_gpio)
