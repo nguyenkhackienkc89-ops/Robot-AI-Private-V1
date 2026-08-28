@@ -54,6 +54,28 @@ jobs:
           ref: v2.4.2
           path: xiaozhi
 
+      - name: Set real firmware version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          p = Path("xiaozhi/CMakeLists.txt")
+          s = p.read_text(encoding="utf-8")
+          new, n = re.subn(
+              r'set\s*\(\s*PROJECT_VER\s+"[^"]+"\s*\)',
+              f'set(PROJECT_VER "{os.environ["FW_VERSION"]}")',
+              s,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit("Không tìm thấy PROJECT_VER trong xiaozhi/CMakeLists.txt")
+          p.write_text(new, encoding="utf-8")
+          print("PROJECT_VER =", os.environ["FW_VERSION"])
+          PY
+          grep -n 'PROJECT_VER' xiaozhi/CMakeLists.txt
+
       - name: Install V5 board and parity UX patches
         run: |
           python tools/install_into_xiaozhi.py "$GITHUB_WORKSPACE/xiaozhi"
@@ -64,26 +86,6 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           cd xiaozhi
-          python - <<'PY'
-          import os, re
-          from pathlib import Path
-          cmake = Path("CMakeLists.txt")
-          ver = os.environ["FW_VERSION"]
-          text = cmake.read_text(encoding="utf-8")
-          new_text, count = re.subn(
-            r'set\s*\(\s*PROJECT_VER\s+"[^"]*"\s*\)',
-            f'set(PROJECT_VER "{ver}")',
-            text,
-            count=1,
-          )
-          if count == 0:
-            new_text = f'set(PROJECT_VER "{ver}")\n' + text
-          cmake.write_text(new_text, encoding="utf-8")
-          print(f"Patched PROJECT_VER={ver}")
-          PY
-          grep -n 'PROJECT_VER' CMakeLists.txt
-          printf '%s\n' "$FW_VERSION" > version.txt
-          echo "Firmware app version: $(cat version.txt)"
           python scripts/build.py robot-ai-private-v1 \
             --name robot-ai-private-v1 \
             --language vi-VN \
@@ -108,9 +110,27 @@ jobs:
           grep -a -q "ST7789-1.3-240x240" "$BIN"
           grep -a -q "VL6180X" "$BIN"
           grep -a -q "$PRIVATE_OTA_URL" "$BIN"
-          grep -a -q "$FW_VERSION" xiaozhi/build/xiaozhi.bin
           grep -q 'CONFIG_USE_HOTSPOT_WIFI_PROVISIONING=y' xiaozhi/sdkconfig
           grep -q "CONFIG_OTA_URL=\"$PRIVATE_OTA_URL\"" xiaozhi/sdkconfig
+
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          b = Path("xiaozhi/build/xiaozhi.bin").read_bytes()
+          # ESP image header 24B + first segment header 8B; esp_app_desc_t follows.
+          base = 24 + 8
+          magic = int.from_bytes(b[base:base+4], "little")
+          if magic != 0xABCD5432:
+              raise SystemExit(f"esp_app_desc magic sai: 0x{magic:08x}")
+          version = b[base+16:base+48].split(b"\0", 1)[0].decode("ascii")
+          if version != os.environ["FW_VERSION"]:
+              raise SystemExit(
+                  f"Firmware version sai: app={version}, expected={os.environ['FW_VERSION']}"
+              )
+          print("Firmware app version PASS:", version)
+          PY
+
           echo "Robot AI Private V6 verification PASS"
 
       - name: Collect USB OTA and browser-flash artifacts
