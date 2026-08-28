@@ -64,6 +64,24 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           cd xiaozhi
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          cmake = Path("CMakeLists.txt")
+          ver = os.environ["FW_VERSION"]
+          text = cmake.read_text(encoding="utf-8")
+          new_text, count = re.subn(
+            r'set\s*\(\s*PROJECT_VER\s+"[^"]*"\s*\)',
+            f'set(PROJECT_VER "{ver}")',
+            text,
+            count=1,
+          )
+          if count == 0:
+            new_text = f'set(PROJECT_VER "{ver}")\n' + text
+          cmake.write_text(new_text, encoding="utf-8")
+          print(f"Patched PROJECT_VER={ver}")
+          PY
+          grep -n 'PROJECT_VER' CMakeLists.txt
           printf '%s\n' "$FW_VERSION" > version.txt
           echo "Firmware app version: $(cat version.txt)"
           python scripts/build.py robot-ai-private-v1 \
