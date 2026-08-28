@@ -12,8 +12,13 @@
         "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
         "CONFIG_PARTITION_TABLE_CUSTOM=y",
         "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m.csv\"",
-        "CONFIG_USE_DEVICE_AEC=y"
-      ]
+        "CONFIG_USE_DEVICE_AEC=y",
+        "CONFIG_USE_HOTSPOT_WIFI_PROVISIONING=y",
+        "CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING=n"
+      ],
+      "build_options": {
+        "wifi_provisioning": "hotspot"
+      }
     }
   ]
 }

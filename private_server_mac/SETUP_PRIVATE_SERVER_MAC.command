@@ -82,6 +82,13 @@ sed "s/__MAC_IP__/$MAC_IP/g" \
   "$HERE/data/.config.template.yaml" \
   > "$HERE/data/.config.yaml"
 
+mkdir -p "$HERE/music" "$HERE/data/bin"
+
+if [ ! -f "$HERE/dual_brain/.env" ] && [ -f "$HERE/dual_brain/.env.example" ]; then
+  cp "$HERE/dual_brain/.env.example" "$HERE/dual_brain/.env"
+  chmod 600 "$HERE/dual_brain/.env"
+fi
+
 echo "Khởi động máy chủ XiaoZhi riêng..."
 docker compose pull
 docker compose up -d
@@ -132,3 +139,21 @@ echo "QUAN TRỌNG:"
 echo "1) Nên đặt DHCP Reservation cho Mac mini ở router để IP $MAC_IP không đổi."
 echo "2) Khi chạy GitHub Actions, nhập Private Server IP = $MAC_IP."
 echo "3) Cấp Accessibility/Automation cho Python/Terminal khi macOS yêu cầu để Mac Bridge điều khiển ứng dụng."
+
+
+echo
+echo "Trung tâm quản trị:"
+echo "  $HERE/../control_center/START_CONTROL_CENTER.command"
+echo "Sau khi robot và Mac cùng Wi‑Fi, giao diện sẽ tự phát hiện IP robot."
+
+
+echo
+echo "========================================================"
+echo " DUAL BRAIN V6"
+echo "========================================================"
+echo "Router: http://127.0.0.1:11435/status"
+echo "Mặc định: AUTO, ưu tiên Qwen3 local."
+echo "Muốn bật não mây GLM-4-Flash:"
+echo "  $HERE/dual_brain/SET_FREE_GLM_BRAIN.command"
+echo "Control Center:"
+echo "  $HERE/../control_center/START_CONTROL_CENTER.command"

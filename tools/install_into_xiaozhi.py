@@ -69,3 +69,16 @@ for label, needle, hay in checks:
         raise RuntimeError(f"{label} verification failed")
 
 print("Robot AI Private V1 board registration: PASS")
+
+
+# -------------------------------------------------------------------
+# V5: Wi-Fi config portal uses XiaoZhi/esp-wifi-connect's real captive
+# portal at 192.168.4.1, but with our robot identity instead of Xiaozhi.
+# -------------------------------------------------------------------
+wifi_board = repo / "main" / "boards" / "common" / "wifi_board.cc"
+wifi_text = wifi_board.read_text(encoding="utf-8")
+wifi_text = wifi_text.replace(
+    'config.ssid_prefix = "Xiaozhi";',
+    'config.ssid_prefix = "TieuDe";'
+)
+wifi_board.write_text(wifi_text, encoding="utf-8")

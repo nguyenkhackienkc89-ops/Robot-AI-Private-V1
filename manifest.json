@@ -1,7 +1,7 @@
 {
   "name": "Robot AI Private V1",
   "status": "full source kit; merged binary requires real ESP-IDF build",
-  "base": "78/xiaozhi-esp32 v2.4.2",
+  "base": "xiaozhi-esp32 v2.4.2",
   "idf": "6.0.2",
   "target": "ESP32-S3 N16R8",
   "display": {
@@ -66,20 +66,12 @@
     "discovery_port": 8766,
     "pairing_token": "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
   },
-  "release": "FINAL_V3_PRIVATE_SERVER",
+  "release": "V6_1_SMART_FREE_FINAL_RC1",
   "persona": {
     "role_name": "Tiểu Đệ",
     "user_address": "Đại Ca",
-    "voice": "male Vietnamese, northern-style target, 28-32, medium-low, clear diction",
-    "style": [
-      "thông minh",
-      "láu cá",
-      "hơi ngông",
-      "hơi hỗn có duyên",
-      "giang hồ kiếm hiệp hiện đại"
-    ],
-    "response_length": "1-3 câu trong đa số tình huống",
-    "serious_mode": "bỏ cà khịa khi câu hỏi nghiêm túc"
+    "voice": "vi-VN-NamMinhNeural",
+    "style": "nam Bắc rõ chữ, thông minh, láu cá, hơi ngông, hơi hỗn có duyên, kiếm hiệp hiện đại"
   },
   "tts_recommended": {
     "provider": "EdgeTTS",
@@ -106,5 +98,67 @@
   },
   "personality_locked_on_server": true,
   "voice_locked_on_server": true,
-  "requires_stable_mac_lan_ip": true
+  "requires_stable_mac_lan_ip": true,
+  "new_v4": {
+    "control_center": "http://Mac-IP:8767",
+    "robot_udp_admin": 8769,
+    "robot_discovery": 8770,
+    "runtime_calibration": [
+      "spin360_ms",
+      "tof_stop_distance_mm"
+    ],
+    "ota": "official xiaozhi single-module data/bin app-binary mechanism",
+    "music": "xiaozhi local play_music plugin through robot speaker",
+    "radio": "Mac browser actions",
+    "wake_word_tieu_de": "integration-ready; requires genuine custom assets.bin"
+  },
+  "private_identity_preserved": true,
+  "v5_features": [
+    "Wi-Fi hotspot captive portal",
+    "192.168.4.1 setup",
+    "V2 ST7789 1.3 240x240",
+    "ToF050C V2 SDA41/SCL42",
+    "web motor control",
+    "dance",
+    "OTA",
+    "Chrome/Edge browser flashing",
+    "local music",
+    "VOV radio bridge",
+    "animated music visualizer",
+    "custom wake-word assets pipeline",
+    "MCP tools",
+    "private AI on Mac mini",
+    "Mac Bridge"
+  ],
+  "dual_brain": {
+    "modes": [
+      "local",
+      "cloud",
+      "auto",
+      "council"
+    ],
+    "router": "OpenAI-compatible /v1 on port 11435",
+    "local": "Ollama qwen3:8b",
+    "cloud": "user-configured OpenAI-compatible API",
+    "cloud_default_enabled": false,
+    "cloud_daily_limit_default": 50,
+    "public_xiaozhi_direct_profile": true
+  },
+  "persona_locked_private_server": true,
+  "tts_private_server": "vi-VN-NamMinhNeural",
+  "recommended_mode": "auto",
+  "free_cloud_preset": {
+    "provider": "Zhipu BigModel",
+    "model": "glm-4-flash",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "api_key_required": true,
+    "described_as_free_in_xiaozhi_public_config_as_of_2026_08_28": true,
+    "free_forever_guaranteed": false,
+    "nonfree_cloud_blocked_by_default": true
+  },
+  "auto_policy": {
+    "knowledge_and_reasoning": "glm-4-flash when configured",
+    "robot_mac_sensitive": "qwen3:8b local",
+    "cloud_failure": "local fallback"
+  }
 }

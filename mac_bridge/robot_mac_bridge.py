@@ -5,6 +5,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TOKEN = "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
 HTTP_PORT = 8765
 DISCOVERY_PORT = 8766
+ROBOT_ADMIN_PORT = 8769
+ROBOT_HELLO_PORT = 8770
+LATEST_ROBOT = {"ip":"", "last_seen":0}
 
 def run(cmd):
     return subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -56,6 +59,14 @@ def execute(action, value):
         osa('set volume output volume ((output volume of (get volume settings)) - 10)')
     elif action == "play_pause":
         osa('tell application "System Events" to key code 16 using {command down}')
+    elif action == "play_music_youtube":
+        open_url("https://www.youtube.com/results?search_query="+urllib.parse.quote(value or "nhạc"),"Google Chrome")
+    elif action == "radio_vov1":
+        open_url("https://vov1.vov.vn/","Google Chrome")
+    elif action == "radio_vov2":
+        open_url("https://vov2.vov.vn/","Google Chrome")
+    elif action == "radio_vov_gt":
+        open_url("https://vovgiaothong.vn/","Google Chrome")
     else:
         raise ValueError("Action không được cho phép: "+action)
 
@@ -88,7 +99,32 @@ def discovery():
         if data.decode(errors="ignore").strip() == "ROBOT_DISCOVER "+TOKEN:
             s.sendto(("ROBOT_MAC "+TOKEN).encode(),addr)
 
+
+def robot_hello_listener():
+    s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+    s.bind(("",ROBOT_HELLO_PORT))
+    prefix="ROBOT_HELLO "+TOKEN+" "
+    while True:
+        data,addr=s.recvfrom(512)
+        msg=data.decode(errors="ignore").strip()
+        if msg.startswith(prefix):
+            LATEST_ROBOT["ip"]=addr[0]
+            LATEST_ROBOT["last_seen"]=int(time.time())
+
+def robot_admin(command, timeout=1.2):
+    ip=LATEST_ROBOT.get("ip","")
+    if not ip:
+        raise RuntimeError("Chưa phát hiện robot trong LAN")
+    s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    s.settimeout(timeout)
+    msg=("ROBOT_ADMIN "+TOKEN+" "+command).encode()
+    s.sendto(msg,(ip,ROBOT_ADMIN_PORT))
+    data,_=s.recvfrom(1024)
+    return data.decode(errors="ignore")
+
 if __name__=="__main__":
     threading.Thread(target=discovery,daemon=True).start()
+    threading.Thread(target=robot_hello_listener,daemon=True).start()
     print(f"Robot Mac Bridge: HTTP {HTTP_PORT}, discovery {DISCOVERY_PORT}")
     ThreadingHTTPServer(("0.0.0.0",HTTP_PORT),Handler).serve_forever()

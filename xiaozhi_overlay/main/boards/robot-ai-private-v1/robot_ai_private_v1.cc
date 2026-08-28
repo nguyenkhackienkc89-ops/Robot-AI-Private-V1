@@ -5,6 +5,7 @@
 #include "button.h"
 #include "config.h"
 #include "mcp_server.h"
+#include "settings.h"
 #include "led/single_led.h"
 
 #include <esp_log.h>
@@ -14,6 +15,7 @@
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_http_client.h>
+#include <esp_http_server.h>
 
 #include <driver/spi_common.h>
 #include <driver/ledc.h>
@@ -39,7 +41,7 @@
 #define TAG "RobotPrivateV1"
 
 enum class RobotFace : int {
-    Idle = 0, Listening, Speaking, Thinking, Teasing, Surprise, Angry
+    Idle = 0, Listening, Speaking, Thinking, Teasing, Surprise, Angry, Music
 };
 
 class RobotFaceDisplay : public SpiLcdDisplay {
@@ -70,6 +72,14 @@ public:
         right_ = lv_obj_create(face_layer_);
         PrepareEye(left_);
         PrepareEye(right_);
+        for (int k=0;k<8;k++) {
+            bars_[k] = lv_obj_create(face_layer_);
+            lv_obj_remove_style_all(bars_[k]);
+            lv_obj_set_style_bg_opa(bars_[k], LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(bars_[k], lv_color_hex(0xBFEAFF), 0);
+            lv_obj_set_style_radius(bars_[k], 3, 0);
+            lv_obj_add_flag(bars_[k], LV_OBJ_FLAG_HIDDEN);
+        }
         DrawUnlocked(RobotFace::Idle, false);
     }
 
@@ -92,6 +102,7 @@ private:
     lv_obj_t* face_layer_ = nullptr;
     lv_obj_t* left_ = nullptr;
     lv_obj_t* right_ = nullptr;
+    lv_obj_t* bars_[8] = {nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
     std::atomic<int> requested_{0};
     std::atomic<int> manual_{0};
     std::atomic<int64_t> manual_until_us_{0};
@@ -107,6 +118,23 @@ private:
     void DrawUnlocked(RobotFace face, bool blink) {
         if (!left_ || !right_) return;
         ++frame_;
+
+        if (face == RobotFace::Music) {
+            lv_obj_add_flag(left_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(right_, LV_OBJ_FLAG_HIDDEN);
+            for (int k=0;k<8;k++) {
+                lv_obj_clear_flag(bars_[k], LV_OBJ_FLAG_HIDDEN);
+                int phase=(frame_ + k*3) % 18;
+                int hh=12 + ((phase < 9 ? phase : 18-phase) * 6);
+                lv_obj_set_size(bars_[k], 12, hh);
+                lv_obj_align(bars_[k], LV_ALIGN_CENTER, -70 + k*20, 18 - hh/2);
+            }
+            return;
+        }
+        lv_obj_clear_flag(left_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(right_, LV_OBJ_FLAG_HIDDEN);
+        for (int k=0;k<8;k++) lv_obj_add_flag(bars_[k], LV_OBJ_FLAG_HIDDEN);
+
         int w=52, h=30, gap=22, y=0;
         uint32_t color=0xF8FBFF;
 
@@ -118,6 +146,7 @@ private:
             case RobotFace::Teasing:   w=52; h=10; gap=24; y=6; break;
             case RobotFace::Surprise:  w=44; h=44; gap=24; y=0; break;
             case RobotFace::Angry:     w=54; h=12; gap=18; y=2; color=0xFFD2D2; break;
+            case RobotFace::Music:     break;
         }
         if (blink) h=4;
 
@@ -288,6 +317,21 @@ public:
             c->s->Stop(); delete c; vTaskDelete(nullptr);
         },"wiggle",3072,c,3,nullptr);
     }
+    void Dance() {
+        struct Ctx { MotorController* s; };
+        auto* c = new Ctx{this};
+        xTaskCreate([](void* p){
+            auto* c=static_cast<Ctx*>(p);
+            c->s->TurnLeft(38,260);  vTaskDelay(pdMS_TO_TICKS(300));
+            c->s->TurnRight(38,520); vTaskDelay(pdMS_TO_TICKS(560));
+            c->s->TurnLeft(38,260);  vTaskDelay(pdMS_TO_TICKS(300));
+            c->s->Forward(30,220);   vTaskDelay(pdMS_TO_TICKS(260));
+            c->s->Backward(30,220);  vTaskDelay(pdMS_TO_TICKS(260));
+            c->s->Stop();
+            delete c;
+            vTaskDelete(nullptr);
+        },"robot_dance",4096,c,3,nullptr);
+    }
     void Stop() {
         left_.store(0); right_.store(0); deadline_us_.store(0);
         Apply(0,0);
@@ -301,6 +345,15 @@ public:
         }
     }
     int Spin360Ms() const { return spin360_ms_.load(); }
+    void SetStopDistanceMm(int mm) {
+        mm = std::clamp(mm, 60, 500);
+        stop_distance_mm_.store(mm);
+        nvs_handle_t h;
+        if (nvs_open("robot_cal", NVS_READWRITE, &h)==ESP_OK) {
+            nvs_set_i32(h,"stop_mm",mm); nvs_commit(h); nvs_close(h);
+        }
+    }
+    int StopDistanceMm() const { return stop_distance_mm_.load(); }
 
 private:
     Tof050c* tof_=nullptr;
@@ -309,6 +362,7 @@ private:
     std::atomic<int64_t> deadline_us_{0};
     std::atomic<bool> check_front_{false};
     std::atomic<int> spin360_ms_{MOTOR_SPIN_360_DEFAULT_MS};
+    std::atomic<int> stop_distance_mm_{MOTOR_STOP_DISTANCE_MM};
     int applied_l_=999, applied_r_=999;
 
     static int ClampSpeed(int x){ return std::clamp(x,20,60); }
@@ -344,6 +398,9 @@ private:
         if(nvs_open("robot_cal",NVS_READONLY,&h)==ESP_OK){
             if(nvs_get_i32(h,"spin360_ms",&v)==ESP_OK)
                 spin360_ms_.store(std::clamp((int)v,600,3000));
+            int32_t stop_mm=MOTOR_STOP_DISTANCE_MM;
+            if(nvs_get_i32(h,"stop_mm",&stop_mm)==ESP_OK)
+                stop_distance_mm_.store(std::clamp((int)stop_mm,60,500));
             nvs_close(h);
         }
     }
@@ -356,7 +413,7 @@ private:
             }
             if(check_front_.load() && l>0 && r>0 && tof_ && tof_->Ready()){
                 int mm=tof_->DistanceMm();
-                if(mm>0 && mm<MOTOR_STOP_DISTANCE_MM){
+                if(mm>0 && mm<stop_distance_mm_.load()){
                     ESP_LOGW(TAG,"Obstacle %d mm -> STOP",mm);
                     l=r=0; left_.store(0); right_.store(0); deadline_us_.store(0);
                 }
@@ -455,16 +512,268 @@ private:
     }
 };
 
+
+class RobotAdminUdp {
+public:
+    void Init(MotorController* motors, Tof050c* tof) {
+        motors_ = motors;
+        tof_ = tof;
+        xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->ListenLoop(); },
+                    "robot_admin", 4096, this, 3, &listen_task_);
+        xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->HelloLoop(); },
+                    "robot_hello", 3072, this, 2, &hello_task_);
+    }
+
+private:
+    MotorController* motors_ = nullptr;
+    Tof050c* tof_ = nullptr;
+    TaskHandle_t listen_task_ = nullptr;
+    TaskHandle_t hello_task_ = nullptr;
+
+    static bool StartsWith(const std::string& s, const std::string& p) {
+        return s.rfind(p, 0) == 0;
+    }
+
+    std::string Handle(const std::string& cmd) {
+        const std::string prefix = std::string("ROBOT_ADMIN ") + MAC_BRIDGE_TOKEN + " ";
+        if (!StartsWith(cmd, prefix)) return "ERR auth";
+        std::string rest = cmd.substr(prefix.size());
+
+        if (rest == "STATUS") {
+            int dist = (tof_ && tof_->Ready()) ? tof_->DistanceMm() : -1;
+            return "OK distance_mm=" + std::to_string(dist) +
+                   " spin360_ms=" + std::to_string(motors_->Spin360Ms()) +
+                   " stop_mm=" + std::to_string(motors_->StopDistanceMm());
+        }
+        if (StartsWith(rest, "SET_SPIN ")) {
+            int v = atoi(rest.substr(9).c_str());
+            motors_->SetSpin360Ms(v);
+            return "OK spin360_ms=" + std::to_string(motors_->Spin360Ms());
+        }
+        if (StartsWith(rest, "SET_STOP ")) {
+            int v = atoi(rest.substr(9).c_str());
+            motors_->SetStopDistanceMm(v);
+            return "OK stop_mm=" + std::to_string(motors_->StopDistanceMm());
+        }
+        if (rest == "STOP") {
+            motors_->Stop();
+            return "OK stopped";
+        }
+        if (StartsWith(rest, "MOVE ")) {
+            // MOVE action speed duration_ms
+            char action[24] = {0};
+            int speed = 35, ms = 300;
+            if (sscanf(rest.c_str(), "MOVE %23s %d %d", action, &speed, &ms) != 3)
+                return "ERR move_args";
+
+            std::string a(action);
+            if (a == "forward") motors_->Forward(speed, ms);
+            else if (a == "backward") motors_->Backward(speed, ms);
+            else if (a == "left") motors_->TurnLeft(speed, ms);
+            else if (a == "right") motors_->TurnRight(speed, ms);
+            else if (a == "spin_right") motors_->Spin360(true);
+            else if (a == "spin_left") motors_->Spin360(false);
+            else return "ERR move_action";
+            return "OK moving";
+        }
+        return "ERR unknown";
+    }
+
+    void ListenLoop() {
+        int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+        if (sock < 0) { vTaskDelete(nullptr); return; }
+
+        sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(ROBOT_ADMIN_PORT);
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        if (bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
+            close(sock); vTaskDelete(nullptr); return;
+        }
+
+        for (;;) {
+            char buf[256] = {0};
+            sockaddr_in src = {};
+            socklen_t sl = sizeof(src);
+            int n = recvfrom(sock, buf, sizeof(buf)-1, 0, (sockaddr*)&src, &sl);
+            if (n <= 0) continue;
+            buf[n] = 0;
+            std::string reply = Handle(std::string(buf));
+            sendto(sock, reply.data(), reply.size(), 0, (sockaddr*)&src, sl);
+        }
+    }
+
+    void HelloLoop() {
+        for (;;) {
+            int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+            if (sock >= 0) {
+                int yes = 1;
+                setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+                sockaddr_in dst = {};
+                dst.sin_family = AF_INET;
+                dst.sin_port = htons(ROBOT_ADMIN_HELLO_PORT);
+                dst.sin_addr.s_addr = inet_addr("255.255.255.255");
+                std::string msg = std::string("ROBOT_HELLO ") + MAC_BRIDGE_TOKEN +
+                                  " robot-ai-private-v4";
+                sendto(sock, msg.data(), msg.size(), 0, (sockaddr*)&dst, sizeof(dst));
+                close(sock);
+            }
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+    }
+};
+
+
+
+class RobotDeviceWeb {
+public:
+    void Init(MotorController* motors, Tof050c* tof) {
+        motors_ = motors;
+        tof_ = tof;
+        instance_ = this;
+
+        httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+        cfg.server_port = 8080;
+        cfg.ctrl_port = 32772;
+        cfg.max_uri_handlers = 8;
+        cfg.stack_size = 6144;
+
+        if (httpd_start(&server_, &cfg) != ESP_OK) {
+            ESP_LOGW(TAG, "Robot web control failed to start");
+            return;
+        }
+
+        Register("/", HTTP_GET, Root);
+        Register("/status", HTTP_GET, Status);
+        Register("/cmd", HTTP_GET, Command);
+        Register("/set", HTTP_GET, Settings);
+        ESP_LOGI(TAG, "Robot device web control: port 8080");
+    }
+
+private:
+    inline static RobotDeviceWeb* instance_ = nullptr;
+    httpd_handle_t server_ = nullptr;
+    MotorController* motors_ = nullptr;
+    Tof050c* tof_ = nullptr;
+
+    void Register(const char* uri, httpd_method_t method, esp_err_t (*handler)(httpd_req_t*)) {
+        httpd_uri_t u = {};
+        u.uri = uri;
+        u.method = method;
+        u.handler = handler;
+        u.user_ctx = nullptr;
+        httpd_register_uri_handler(server_, &u);
+    }
+
+    static std::string Query(httpd_req_t* req, const char* key) {
+        char q[256] = {0};
+        if (httpd_req_get_url_query_str(req, q, sizeof(q)) != ESP_OK) return "";
+        char v[96] = {0};
+        if (httpd_query_key_value(q, key, v, sizeof(v)) != ESP_OK) return "";
+        return v;
+    }
+
+    static esp_err_t Root(httpd_req_t* req) {
+        static const char page[] = R"HTML(
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tiểu Đệ Robot</title>
+<style>
+body{font-family:Arial;margin:18px;background:#0c121b;color:#eef6ff}
+.card{padding:15px;margin:12px 0;border:1px solid #34506d;border-radius:14px;background:#121d2a}
+button,input{font-size:17px;padding:11px;margin:4px;border-radius:9px;border:1px solid #45627f}
+button{background:#eaf5ff;color:#0a1724}.stop{background:#ffdddd}
+code{color:#bfeaff}
+</style></head><body>
+<h2>Tiểu Đệ · Robot AI Private V5</h2>
+<div class="card">
+<b>Điều khiển động cơ</b><br>
+<button onclick="c('forward')">↑ Tiến</button><br>
+<button onclick="c('left')">← Trái</button>
+<button class="stop" onclick="c('stop')">■ Dừng</button>
+<button onclick="c('right')">Phải →</button><br>
+<button onclick="c('backward')">↓ Lùi</button>
+<button onclick="c('spin')">↻ 360°</button>
+<button onclick="c('dance')">Nhảy</button>
+</div>
+<div class="card">
+<b>Hiệu chuẩn</b><br>
+Quay 360: <input id="spin" type="number" value="1700" min="600" max="3000"> ms<br>
+Ngưỡng ToF: <input id="stopmm" type="number" value="130" min="60" max="500"> mm<br>
+<button onclick="save()">Lưu vào robot</button>
+</div>
+<div class="card">
+<b>Cấu hình phần cứng V2 đã khóa an toàn</b><br>
+Màn hình: <code>ST7789 1.3" 240×240</code><br>
+ToF050C/VL6180X: <code>SDA41 / SCL42</code><br>
+Touch: <code>Tắt</code><br>
+LED trang trí: <code>GPIO38 / GPIO46</code><br>
+<p>Wi‑Fi & OTA: khi robot đang ở chế độ cấu hình, mở
+<a style="color:#bfeaff" href="http://192.168.4.1/">192.168.4.1</a>.</p>
+</div>
+<div class="card"><b>Trạng thái</b><pre id="s">...</pre></div>
+<script>
+async function c(m){await fetch('/cmd?m='+m); setTimeout(load,150)}
+async function save(){
+ await fetch('/set?spin='+encodeURIComponent(spin.value)+'&stop='+encodeURIComponent(stopmm.value));load()
+}
+async function load(){s.textContent=await (await fetch('/status')).text()}
+setInterval(load,1200);load()
+</script></body></html>)HTML";
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        return httpd_resp_send(req, page, HTTPD_RESP_USE_STRLEN);
+    }
+
+    static esp_err_t Status(httpd_req_t* req) {
+        if (!instance_) return ESP_FAIL;
+        int d = instance_->tof_ ? instance_->tof_->DistanceMm() : -1;
+        std::string body =
+            std::string("{\"distance_mm\":") + std::to_string(d) +
+            ",\"spin360_ms\":" + std::to_string(instance_->motors_->Spin360Ms()) +
+            ",\"stop_mm\":" + std::to_string(instance_->motors_->StopDistanceMm()) +
+            ",\"display\":\"ST7789-1.3-240x240\",\"tof\":\"VL6180X\"}";
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_send(req, body.c_str(), body.size());
+    }
+
+    static esp_err_t Command(httpd_req_t* req) {
+        if (!instance_) return ESP_FAIL;
+        std::string m = Query(req,"m");
+        auto* x = instance_->motors_;
+        if (m=="forward") x->Forward(35,350);
+        else if (m=="backward") x->Backward(35,350);
+        else if (m=="left") x->TurnLeft(38,300);
+        else if (m=="right") x->TurnRight(38,300);
+        else if (m=="spin") x->Spin360(true);
+        else if (m=="dance") x->Dance();
+        else x->Stop();
+        return httpd_resp_sendstr(req,"OK");
+    }
+
+    static esp_err_t Settings(httpd_req_t* req) {
+        if (!instance_) return ESP_FAIL;
+        std::string spin = Query(req,"spin");
+        std::string stop = Query(req,"stop");
+        if (!spin.empty()) instance_->motors_->SetSpin360Ms(atoi(spin.c_str()));
+        if (!stop.empty()) instance_->motors_->SetStopDistanceMm(atoi(stop.c_str()));
+        return httpd_resp_sendstr(req,"OK");
+    }
+};
+
+
 class RobotAiPrivateV1Board : public WifiBoard {
 public:
     RobotAiPrivateV1Board() : boot_button_(BOOT_BUTTON_GPIO) {
-        ESP_LOGI(TAG, "ROBOT_PRIVATE_V1_FEATURESET_20260828");
+        ESP_LOGI(TAG, "ROBOT_PRIVATE_V6_DUAL_BRAIN_20260828");
         InitializeSpi();
         InitializeDisplay();
         InitializeButton();
         lights_.Init();
         tof_.Init();
         motors_.Init(&tof_);
+        admin_.Init(&motors_, &tof_);
+        device_web_.Init(&motors_, &tof_);
         InitializeTools();
         StartFaceTask();
         GetBacklight()->RestoreBrightness();
@@ -500,6 +809,8 @@ private:
     MotorController motors_;
     RobotLights lights_;
     MacBridgeClient mac_;
+    RobotAdminUdp admin_;
+    RobotDeviceWeb device_web_;
     TaskHandle_t face_task_=nullptr;
 
     void InitializeSpi(){
@@ -552,6 +863,10 @@ private:
             }
             app.ToggleChatState();
         });
+        boot_button_.OnLongPress([this](){
+            motors_.Stop();
+            EnterWifiConfigMode();
+        });
     }
 
     static RobotFace ParseFace(const std::string& s){
@@ -561,6 +876,7 @@ private:
         if(s=="tease") return RobotFace::Teasing;
         if(s=="surprise") return RobotFace::Surprise;
         if(s=="angry") return RobotFace::Angry;
+        if(s=="music") return RobotFace::Music;
         return RobotFace::Idle;
     }
 
@@ -622,6 +938,11 @@ private:
                       motors_.Wiggle(); return true;
                   });
 
+        m.AddTool("self.robot.dance","Cho robot nhảy/chuyển động vui ngắn.",
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
+                      motors_.Dance(); display_->Manual(RobotFace::Teasing,3200); return true;
+                  });
+
         m.AddTool("self.robot.distance","Đọc khoảng cách TOF050C theo mm.",
                   PropertyList(),[this](const PropertyList&)->ReturnValue{
                       return tof_.DistanceMm();
@@ -636,9 +957,33 @@ private:
                 return motors_.Spin360Ms();
             });
 
+
+        m.AddTool(
+            "self.robot.settings",
+            "Đọc hoặc thay đổi hiệu chuẩn robot. action: status, set_spin360_ms, set_stop_distance_mm.",
+            PropertyList(std::vector<Property>{
+                Property("action",kPropertyTypeString),
+                Property("value",kPropertyTypeInteger,0,4000)
+            }),
+            [this](const PropertyList& p)->ReturnValue{
+                std::string a=p["action"].value<std::string>();
+                int v=p["value"].value<int>();
+                if(a=="set_spin360_ms") {
+                    motors_.SetSpin360Ms(v);
+                    return motors_.Spin360Ms();
+                }
+                if(a=="set_stop_distance_mm") {
+                    motors_.SetStopDistanceMm(v);
+                    return motors_.StopDistanceMm();
+                }
+                return std::string("spin360_ms=")+std::to_string(motors_.Spin360Ms())+
+                       " stop_mm="+std::to_string(motors_.StopDistanceMm())+
+                       " distance_mm="+std::to_string(tof_.DistanceMm());
+            });
+
         m.AddTool(
             "self.robot.face",
-            "Biểu cảm mắt: idle, listen, talk, think, tease, surprise, angry.",
+            "Biểu cảm: idle, listen, talk, think, tease, surprise, angry, music.",
             PropertyList(std::vector<Property>{Property("mode",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 display_->Manual(ParseFace(p["mode"].value<std::string>()),2800);
@@ -658,11 +1003,50 @@ private:
                 return true;
             });
 
+
+        m.AddTool(
+            "self.robot.server_profile",
+            "Chuyển máy chủ hội thoại. action: status, private, public_xiaozhi. "
+            "private dùng máy chủ riêng trên Mac; public_xiaozhi dùng Xiaozhi công cộng và robot sẽ khởi động lại.",
+            PropertyList(std::vector<Property>{Property("action",kPropertyTypeString)}),
+            [this](const PropertyList& p)->ReturnValue{
+                std::string action=p["action"].value<std::string>();
+                Settings brain("robot_brain", action!="status");
+                std::string current=brain.GetString("server_profile","private");
+
+                if(action=="status"){
+                    Settings wifi("wifi",false);
+                    std::string ota=wifi.GetString("ota_url","");
+                    return std::string("profile=")+current+
+                           " ota_override="+(ota.empty() ? std::string("<default-private>") : ota);
+                }
+
+                if(action=="private"){
+                    Settings wifi("wifi",true);
+                    wifi.EraseKey("ota_url");
+                    brain.SetString("server_profile","private");
+                } else if(action=="public_xiaozhi"){
+                    Settings wifi("wifi",true);
+                    wifi.SetString("ota_url",ROBOT_PUBLIC_XIAOZHI_OTA_URL);
+                    brain.SetString("server_profile","public_xiaozhi");
+                } else {
+                    return std::string("action_invalid");
+                }
+
+                xTaskCreate([](void*){
+                    vTaskDelay(pdMS_TO_TICKS(900));
+                    esp_restart();
+                },"brain_reboot",3072,nullptr,2,nullptr);
+
+                return std::string("switching_to=")+action+" rebooting=true";
+            });
+
         m.AddTool(
             "self.mac.command",
             "Điều khiển Mac mini trong LAN. action: open_chrome, open_safari, "
             "open_youtube, youtube_search, web_search, open_word, word_write, "
-            "open_finder, open_app, type_text, volume_up, volume_down, play_pause. "
+            "open_finder, open_app, type_text, volume_up, volume_down, play_pause, "
+            "play_music_youtube, radio_vov1, radio_vov2, radio_vov_gt. "
             "Không hỗ trợ xóa file, shell tùy ý, mật khẩu hay thanh toán.",
             PropertyList(std::vector<Property>{
                 Property("action",kPropertyTypeString),

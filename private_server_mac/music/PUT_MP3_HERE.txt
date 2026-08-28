@@ -1,0 +1,1 @@
+Chép file .mp3 hoặc .wav vào thư mục này để XiaoZhi phát nhạc qua loa robot.

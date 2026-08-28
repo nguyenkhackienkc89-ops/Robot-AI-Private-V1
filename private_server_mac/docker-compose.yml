@@ -3,6 +3,8 @@ services:
     image: ghcr.io/xinnan-tech/xiaozhi-esp32-server:server_latest
     container_name: robot-ai-private-xiaozhi
     restart: unless-stopped
+    depends_on:
+      - dual-brain-router
     security_opt:
       - seccomp:unconfined
     environment:
@@ -13,3 +15,20 @@ services:
     volumes:
       - ./data:/opt/xiaozhi-esp32-server/data
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
+      - ./music:/opt/xiaozhi-esp32-server/music
+      - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
+      - ./server_plugins/play_radio_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/play_radio_private.py:ro
+      - ./server_plugins/brain_mode_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/brain_mode_private.py:ro
+
+
+  dual-brain-router:
+    image: python:3.11-slim
+    container_name: robot-ai-dual-brain
+    restart: unless-stopped
+    command: ["python", "/app/dual_brain_router.py"]
+    ports:
+      - "11435:11435"
+    volumes:
+      - ./dual_brain:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
