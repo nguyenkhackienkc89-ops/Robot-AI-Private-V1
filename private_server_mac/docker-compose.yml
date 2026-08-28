@@ -1,0 +1,15 @@
+services:
+  xiaozhi-private:
+    image: ghcr.io/xinnan-tech/xiaozhi-esp32-server:server_latest
+    container_name: robot-ai-private-xiaozhi
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - "8000:8000"
+      - "8003:8003"
+    volumes:
+      - ./data:/opt/xiaozhi-esp32-server/data
+      - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt

@@ -1,0 +1,5 @@
+1. Upload toàn bộ nội dung package V3 vào repo GitHub.
+2. Actions -> Build Robot AI Private V3 -> Run workflow.
+3. Nhập private_server_ip = IP LAN cố định của Mac mini.
+4. Sau Success, tải Robot_AI_Private_V3_Firmware.zip.
+5. Gửi artifact lại cho ChatGPT để kiểm tra binary trước khi nạp.

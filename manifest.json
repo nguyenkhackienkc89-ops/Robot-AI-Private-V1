@@ -66,7 +66,7 @@
     "discovery_port": 8766,
     "pairing_token": "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
   },
-  "release": "FINAL_V2",
+  "release": "FINAL_V3_PRIVATE_SERVER",
   "persona": {
     "role_name": "Tiểu Đệ",
     "user_address": "Đại Ca",
@@ -94,5 +94,17 @@
     "Mac Bridge LAN control",
     "dynamic face",
     "GitHub binary verification workflow"
-  ]
+  ],
+  "architecture": {
+    "robot": "ESP32-S3 N16R8 custom firmware",
+    "ai_server": "xiaozhi-esp32-server on Mac mini M4",
+    "llm": "Ollama qwen3:8b on Mac mini",
+    "asr": "SenseVoiceSmall/FunASR local server",
+    "tts": "EdgeTTS vi-VN-NamMinhNeural",
+    "mac_control": "Robot Mac Bridge LAN",
+    "private_ota": "http://<MAC_LAN_IP>:8003/xiaozhi/ota/"
+  },
+  "personality_locked_on_server": true,
+  "voice_locked_on_server": true,
+  "requires_stable_mac_lan_ip": true
 }

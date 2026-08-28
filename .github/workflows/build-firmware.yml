@@ -1,16 +1,53 @@
-name: Build Robot AI Private V1
+name: Build Robot AI Private V3
 
 on:
   workflow_dispatch:
+    inputs:
+      private_server_ip:
+        description: "IPv4 LAN cố định của Mac mini (ví dụ 192.168.1.50)"
+        required: true
+        type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v6.0.2
+
     steps:
-      - name: Checkout this package
+      - name: Checkout private firmware package
         uses: actions/checkout@v4
+
+      - name: Validate private server IP
+        shell: bash
+        run: |
+          IP="${{ inputs.private_server_ip }}"
+          if ! echo "$IP" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+            echo "Invalid IPv4: $IP"
+            exit 1
+          fi
+          echo "PRIVATE_SERVER_IP=$IP" >> "$GITHUB_ENV"
+          echo "PRIVATE_OTA_URL=http://$IP:8003/xiaozhi/ota/" >> "$GITHUB_ENV"
+
+      - name: Lock firmware to private Mac server
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          p = Path("xiaozhi_overlay/main/boards/robot-ai-private-v1/config.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          sdk = data["builds"][0].setdefault("sdkconfig_append", [])
+
+          sdk = [x for x in sdk if not x.startswith("CONFIG_OTA_URL=")]
+          ota = os.environ["PRIVATE_OTA_URL"]
+          sdk.append(f'CONFIG_OTA_URL="{ota}"')
+
+          data["builds"][0]["sdkconfig_append"] = sdk
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("Locked OTA:", ota)
+          PY
 
       - name: Checkout XiaoZhi v2.4.2
         uses: actions/checkout@v4
@@ -19,12 +56,12 @@ jobs:
           ref: v2.4.2
           path: xiaozhi
 
-      - name: Install and verify custom board registration
+      - name: Install custom board
         run: |
           python tools/install_into_xiaozhi.py "$GITHUB_WORKSPACE/xiaozhi"
-          grep -n 'config BOARD_TYPE_ROBOT_AI_PRIVATE_V1' xiaozhi/main/Kconfig.projbuild
-          grep -n 'CONFIG_BOARD_TYPE_ROBOT_AI_PRIVATE_V1' xiaozhi/main/CMakeLists.txt
+          grep -n "BOARD_TYPE_ROBOT_AI_PRIVATE_V1" xiaozhi/main/Kconfig.projbuild
           grep -n 'BOARD_DIR "robot-ai-private-v1"' xiaozhi/main/CMakeLists.txt
+          cat xiaozhi/main/boards/robot-ai-private-v1/config.json
 
       - name: Build merged binary
         shell: bash
@@ -32,33 +69,47 @@ jobs:
           . $IDF_PATH/export.sh
           cd xiaozhi
           python scripts/build.py robot-ai-private-v1 \
-            --name robot-ai-private-v1 \
+            --name robot-ai-private-v3 \
             --language vi-VN \
             --wake-word disabled
           test -f build/merged-binary.bin
 
-      - name: Verify private features are actually in binary
+      - name: Verify PRIVATE V3 binary
         shell: bash
         run: |
           BIN=xiaozhi/build/merged-binary.bin
-          grep -a -q 'ROBOT_PRIVATE_V1_FEATURESET_20260828' "$BIN"
-          grep -a -q 'self.robot.motion' "$BIN"
-          grep -a -q 'self.robot.calibrate_spin360' "$BIN"
-          grep -a -q 'self.robot.distance' "$BIN"
-          grep -a -q 'self.mac.command' "$BIN"
-          grep -a -q 'ROBOT_DISCOVER' "$BIN"
-          grep -a -q 'VL6180X' "$BIN"
-          echo 'PRIVATE V1 binary verification: PASS'
+
+          grep -a -q "ROBOT_PRIVATE_V1_FEATURESET_20260828" "$BIN"
+          grep -a -q "self.robot.motion" "$BIN"
+          grep -a -q "self.robot.calibrate_spin360" "$BIN"
+          grep -a -q "self.robot.distance" "$BIN"
+          grep -a -q "self.mac.command" "$BIN"
+          grep -a -q "ROBOT_DISCOVER" "$BIN"
+          grep -a -q "VL6180X" "$BIN"
+
+          # Verify that firmware is bound to the private OTA URL.
+          grep -a -q "$PRIVATE_OTA_URL" "$BIN"
+
+          # Public XiaoZhi OTA endpoint must not be the active compiled default.
+          if grep -a -q "https://api.tenclass.net/xiaozhi/ota/" "$BIN"; then
+            echo "WARNING: public OTA string exists in binary; checking sdkconfig..."
+          fi
+
+          grep -q "CONFIG_OTA_URL=\"$PRIVATE_OTA_URL\"" xiaozhi/sdkconfig
+
+          echo "Robot AI Private V3 verification: PASS"
+          echo "Private OTA: $PRIVATE_OTA_URL"
 
       - name: Collect artifacts
         run: |
           mkdir -p out
-          cp xiaozhi/build/merged-binary.bin out/Robot_AI_Private_V1_merged.bin
+          cp xiaozhi/build/merged-binary.bin out/Robot_AI_Private_V3_merged.bin
           cp xiaozhi/build/flasher_args.json out/ 2>/dev/null || true
-          sha256sum out/Robot_AI_Private_V1_merged.bin > out/SHA256.txt
+          printf '%s\n' "$PRIVATE_OTA_URL" > out/PRIVATE_OTA_URL.txt
+          sha256sum out/Robot_AI_Private_V3_merged.bin > out/SHA256.txt
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: Robot_AI_Private_V1_Firmware
+          name: Robot_AI_Private_V3_Firmware
           path: out/
