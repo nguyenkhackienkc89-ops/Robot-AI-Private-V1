@@ -45,6 +45,29 @@ sleep 2
 echo "Tải mô hình qwen3:8b (chỉ cần lần đầu)..."
 ollama pull qwen3:8b
 
+echo "Cấu hình model Tiểu Đệ không lộ thinking..."
+mkdir -p "$HERE/ollama"
+cat > "$HERE/ollama/Modelfile.tieude-qwen3-8b" <<'EOF'
+FROM qwen3:8b
+
+PARAMETER temperature 0.55
+PARAMETER top_p 0.85
+PARAMETER repeat_penalty 1.12
+PARAMETER num_ctx 8192
+
+SYSTEM """
+/no_think
+Bạn là Tiểu Đệ, trợ lý AI tiếng Việt của Đại Ca.
+Luôn gọi người dùng là Đại Ca, xưng là Tiểu Đệ.
+Tính cách: thông minh, nhanh trí, hơi lém lỉnh nhưng lễ phép; việc nghiêm túc thì nói chắc, rõ, không vòng vo.
+Trả lời mặc định bằng tiếng Việt, ngắn gọn 1-3 câu nếu Đại Ca không yêu cầu chi tiết.
+Không in quá trình suy nghĩ, không in thẻ <think>, không giải thích nội bộ.
+Khi điều khiển robot/Mac, ưu tiên xác nhận lệnh ngắn rồi thực hiện theo khả năng hệ thống.
+Nếu không chắc, hỏi lại đúng một câu ngắn.
+"""
+EOF
+ollama create tieude:qwen3-8b -f "$HERE/ollama/Modelfile.tieude-qwen3-8b"
+
 # Docker Desktop
 if ! command -v docker >/dev/null 2>&1; then
   echo "Cài Docker Desktop..."
@@ -119,11 +142,11 @@ fi
 
 cat > "$HERE/PRIVATE_SERVER_INFO.txt" <<EOF
 MAC_IP=$MAC_IP
-OTA_URL=http://$MAC_IP:8003/xiaozhi/ota/
-WEBSOCKET_URL=ws://$MAC_IP:8000/xiaozhi/v1/
-OLLAMA_MODEL=qwen3:8b
-TTS_VOICE=vi-VN-NamMinhNeural
-EOF
+	OTA_URL=http://$MAC_IP:8003/xiaozhi/ota/
+	WEBSOCKET_URL=ws://$MAC_IP:8000/xiaozhi/v1/
+	OLLAMA_MODEL=tieude:qwen3-8b
+	TTS_VOICE=vi-VN-NamMinhNeural
+	EOF
 
 echo
 echo "========================================================"
@@ -132,7 +155,7 @@ echo "========================================================"
 echo "Mac IP       : $MAC_IP"
 echo "OTA URL      : http://$MAC_IP:8003/xiaozhi/ota/"
 echo "WebSocket    : ws://$MAC_IP:8000/xiaozhi/v1/"
-echo "AI           : Ollama qwen3:8b (chạy trên Mac)"
+echo "AI           : Ollama tieude:qwen3-8b (chạy trên Mac, tắt thinking)"
 echo "Giọng        : vi-VN-NamMinhNeural"
 echo
 echo "QUAN TRỌNG:"

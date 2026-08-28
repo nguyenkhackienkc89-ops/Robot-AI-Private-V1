@@ -17,7 +17,8 @@ VALID_MODES = {"local", "cloud", "auto", "council"}
 
 DEFAULTS = {
     "LOCAL_BASE_URL": "http://host.docker.internal:11434/v1",
-    "LOCAL_MODEL": "qwen3:8b",
+    "LOCAL_MODEL": "tieude:qwen3-8b",
+    "LOCAL_THINK": "false",
     "CLOUD_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
     "CLOUD_MODEL": "glm-4-flash",
     "CLOUD_API_KEY": "",
@@ -166,6 +167,7 @@ def call_brain(kind, incoming, env):
         model=env["LOCAL_MODEL"]
         body["model"]=model
         body["messages"]=normalize_messages_for_local(body.get("messages",[]),model)
+        body["think"]=is_true(env.get("LOCAL_THINK","false"))
         return http_json(
             api_url(env["LOCAL_BASE_URL"]), body, "",
             int(env.get("REQUEST_TIMEOUT_SECONDS","90"))
@@ -188,6 +190,19 @@ def extract_answer(resp):
         return msg.get("content") or ""
     except Exception:
         return ""
+
+def sanitize_response(resp):
+    clean=json.loads(json.dumps(resp,ensure_ascii=False))
+    for choice in clean.get("choices",[]) or []:
+        msg=choice.get("message")
+        if isinstance(msg,dict):
+            msg.pop("reasoning",None)
+            msg.pop("thinking",None)
+        delta=choice.get("delta")
+        if isinstance(delta,dict):
+            delta.pop("reasoning",None)
+            delta.pop("thinking",None)
+    return clean
 
 def council(incoming, env):
     # Hội ý chỉ dùng cho phân tích, không để hai não cùng gọi hành động.
@@ -366,6 +381,7 @@ class H(BaseHTTPRequestHandler):
                 incoming=self.read_json()
                 wants_stream=bool(incoming.get("stream",False))
                 resp,selected=route(incoming)
+                resp=sanitize_response(resp)
 
                 if not wants_stream:
                     resp.setdefault("robot_brain",selected)
