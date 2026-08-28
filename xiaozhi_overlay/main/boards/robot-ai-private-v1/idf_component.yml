@@ -1,0 +1,3 @@
+dependencies:
+  esp_http_client:
+    path: espressif/esp_http_client
