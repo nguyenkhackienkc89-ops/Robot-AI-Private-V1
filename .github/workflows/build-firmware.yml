@@ -30,7 +30,25 @@ jobs:
         shell: bash
         run: |
           . $IDF_PATH/export.sh
-          cd xiaozhi
+          python3 - <<'EOF'
+from pathlib import Path
+
+cmake = Path("xiaozhi/main/CMakeLists.txt")
+text = cmake.read_text()
+
+if "esp_http_client" not in text:
+    if "PRIV_REQUIRES" in text:
+        text = text.replace("PRIV_REQUIRES", "PRIV_REQUIRES esp_http_client", 1)
+    elif "REQUIRES" in text:
+        text = text.replace("REQUIRES", "REQUIRES esp_http_client", 1)
+    else:
+        raise SystemExit("No REQUIRES/PRIV_REQUIRES found in xiaozhi/main/CMakeLists.txt")
+    cmake.write_text(text)
+
+print("Patched:", cmake)
+print(cmake.read_text())
+EOF
+        cd xiaozhi
           python scripts/build.py robot-ai-private-v1 \
             --name robot-ai-private-v1 \
             --language vi-VN \
