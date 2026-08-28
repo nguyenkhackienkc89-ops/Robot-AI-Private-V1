@@ -19,6 +19,7 @@ DEFAULTS = {
     "LOCAL_BASE_URL": "http://host.docker.internal:11434/v1",
     "LOCAL_MODEL": "tieude:qwen3-8b",
     "LOCAL_THINK": "false",
+    "LOCAL_KEEP_ALIVE": "30m",
     "CLOUD_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
     "CLOUD_MODEL": "glm-4-flash",
     "CLOUD_API_KEY": "",
@@ -140,6 +141,12 @@ def complexity_score(messages):
 def api_url(base):
     return base.rstrip("/") + "/chat/completions"
 
+def ollama_native_url(base):
+    base=base.rstrip("/")
+    if base.endswith("/v1"):
+        base=base[:-3]
+    return base + "/api/chat"
+
 def http_json(url, payload, api_key="", timeout=90):
     data=json.dumps(payload,ensure_ascii=False).encode("utf-8")
     headers={"Content-Type":"application/json"}
@@ -159,19 +166,58 @@ def normalize_messages_for_local(messages, model):
                 break
     return out
 
+def ollama_to_openai(resp, model):
+    msg=resp.get("message") or {}
+    content=msg.get("content") or ""
+    done_reason=resp.get("done_reason") or "stop"
+    return {
+        "id":"chatcmpl-"+uuid.uuid4().hex,
+        "object":"chat.completion",
+        "created":int(time.time()),
+        "model":resp.get("model") or model,
+        "choices":[{
+            "index":0,
+            "message":{"role":"assistant","content":content},
+            "finish_reason":done_reason,
+        }],
+        "usage":{
+            "prompt_tokens":resp.get("prompt_eval_count",0),
+            "completion_tokens":resp.get("eval_count",0),
+            "total_tokens":resp.get("prompt_eval_count",0)+resp.get("eval_count",0),
+        },
+        "ollama_stats":{
+            "total_ms":round(resp.get("total_duration",0)/1e6,1),
+            "load_ms":round(resp.get("load_duration",0)/1e6,1),
+            "eval_ms":round(resp.get("eval_duration",0)/1e6,1),
+            "tokens_per_second":round(
+                resp.get("eval_count",0)/(resp.get("eval_duration",1)/1e9),2
+            ) if resp.get("eval_duration") else 0,
+        }
+    }
+
 def call_brain(kind, incoming, env):
     body=dict(incoming)
     body["stream"]=False
 
     if kind=="local":
         model=env["LOCAL_MODEL"]
-        body["model"]=model
-        body["messages"]=normalize_messages_for_local(body.get("messages",[]),model)
-        body["think"]=is_true(env.get("LOCAL_THINK","false"))
-        return http_json(
-            api_url(env["LOCAL_BASE_URL"]), body, "",
+        native={
+            "model":model,
+            "messages":normalize_messages_for_local(body.get("messages",[]),model),
+            "stream":False,
+            "think":is_true(env.get("LOCAL_THINK","false")),
+            "keep_alive":env.get("LOCAL_KEEP_ALIVE","30m"),
+        }
+        for key in ("tools","format","options"):
+            if key in body:
+                native[key]=body[key]
+        if "temperature" in body:
+            native.setdefault("options",{})["temperature"]=body["temperature"]
+        resp=http_json(
+            ollama_native_url(env["LOCAL_BASE_URL"]), native, "",
             int(env.get("REQUEST_TIMEOUT_SECONDS","90"))
         )
+        return ollama_to_openai(resp, model)
 
     if kind=="cloud":
         if not cloud_ready(env):
