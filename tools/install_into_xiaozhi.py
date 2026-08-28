@@ -41,6 +41,20 @@ if 'set(BOARD_DIR "robot-ai-private-v1")' not in text:
     text = text.replace(anchor, replacement, 1)
     cmake.write_text(text, encoding="utf-8")
 
+# CMake: esp_http_client is used by the private board source, so add it to
+# the main component dependency list before idf_component_register() runs.
+text = cmake.read_text(encoding="utf-8")
+if "esp_http_client" not in text:
+    anchor = 'set(MAIN_PRIV_REQUIRES_EXTRA "")\n'
+    if anchor not in text:
+        raise RuntimeError("Không tìm thấy MAIN_PRIV_REQUIRES_EXTRA trong CMakeLists.txt")
+    text = text.replace(
+        anchor,
+        anchor + "list(APPEND MAIN_PRIV_REQUIRES_EXTRA esp_http_client)\n",
+        1,
+    )
+    cmake.write_text(text, encoding="utf-8")
+
 # Hard verification before build.py runs.
 kt = kconfig.read_text(encoding="utf-8")
 ct = cmake.read_text(encoding="utf-8")
@@ -48,6 +62,7 @@ checks = [
     ('Kconfig symbol', 'config BOARD_TYPE_ROBOT_AI_PRIVATE_V1', kt),
     ('CMake condition', 'CONFIG_BOARD_TYPE_ROBOT_AI_PRIVATE_V1', ct),
     ('CMake board dir', 'set(BOARD_DIR "robot-ai-private-v1")', ct),
+    ('CMake esp_http_client dependency', 'esp_http_client', ct),
 ]
 for label, needle, hay in checks:
     if needle not in hay:
