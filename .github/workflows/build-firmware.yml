@@ -1,0 +1,64 @@
+name: Build Robot AI Private V1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v6.0.2
+    steps:
+      - name: Checkout this package
+        uses: actions/checkout@v4
+
+      - name: Checkout XiaoZhi v2.4.2
+        uses: actions/checkout@v4
+        with:
+          repository: 78/xiaozhi-esp32
+          ref: v2.4.2
+          path: xiaozhi
+
+      - name: Install and verify custom board registration
+        run: |
+          python tools/install_into_xiaozhi.py "$GITHUB_WORKSPACE/xiaozhi"
+          grep -n 'config BOARD_TYPE_ROBOT_AI_PRIVATE_V1' xiaozhi/main/Kconfig.projbuild
+          grep -n 'CONFIG_BOARD_TYPE_ROBOT_AI_PRIVATE_V1' xiaozhi/main/CMakeLists.txt
+          grep -n 'BOARD_DIR "robot-ai-private-v1"' xiaozhi/main/CMakeLists.txt
+
+      - name: Build merged binary
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          cd xiaozhi
+          python scripts/build.py robot-ai-private-v1 \
+            --name robot-ai-private-v1 \
+            --language vi-VN \
+            --wake-word disabled
+          test -f build/merged-binary.bin
+
+      - name: Verify private features are actually in binary
+        shell: bash
+        run: |
+          BIN=xiaozhi/build/merged-binary.bin
+          grep -a -q 'ROBOT_PRIVATE_V1_FEATURESET_20260828' "$BIN"
+          grep -a -q 'self.robot.motion' "$BIN"
+          grep -a -q 'self.robot.calibrate_spin360' "$BIN"
+          grep -a -q 'self.robot.distance' "$BIN"
+          grep -a -q 'self.mac.command' "$BIN"
+          grep -a -q 'ROBOT_DISCOVER' "$BIN"
+          grep -a -q 'VL6180X' "$BIN"
+          echo 'PRIVATE V1 binary verification: PASS'
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp xiaozhi/build/merged-binary.bin out/Robot_AI_Private_V1_merged.bin
+          cp xiaozhi/build/flasher_args.json out/ 2>/dev/null || true
+          sha256sum out/Robot_AI_Private_V1_merged.bin > out/SHA256.txt
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: Robot_AI_Private_V1_Firmware
+          path: out/

@@ -1,0 +1,11 @@
+# Hồ sơ tham khảo cho xiaozhi-esp32-server
+selected_module:
+  TTS: EdgeTTS
+
+TTS:
+  EdgeTTS:
+    type: edge
+    voice: "vi-VN-NamMinhNeural"
+    rate: "-6%"
+    volume: "+0%"
+    pitch: "-4Hz"

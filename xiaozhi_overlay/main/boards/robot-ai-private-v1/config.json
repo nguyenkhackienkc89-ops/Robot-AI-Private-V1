@@ -1,0 +1,19 @@
+{
+  "type": "robot-ai-private-v1",
+  "target": "esp32s3",
+  "builds": [
+    {
+      "name": "robot-ai-private-v1",
+      "sdkconfig_append": [
+        "CONFIG_BOARD_TYPE_ROBOT_AI_PRIVATE_V1=y",
+        "CONFIG_SPIRAM=y",
+        "CONFIG_SPIRAM_MODE_OCT=y",
+        "CONFIG_SPIRAM_SPEED_80M=y",
+        "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+        "CONFIG_PARTITION_TABLE_CUSTOM=y",
+        "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m.csv\"",
+        "CONFIG_USE_DEVICE_AEC=y"
+      ]
+    }
+  ]
+}
