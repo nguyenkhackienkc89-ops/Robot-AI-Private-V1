@@ -1,5 +1,0 @@
-idf_component_register(
-    SRCS "app_main.cc"
-    INCLUDE_DIRS "."
-    PRIV_REQUIRES esp_http_client esp_driver_gpio
-)
