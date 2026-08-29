@@ -929,22 +929,22 @@ private:
             });
 
         m.AddTool("self.robot.stop","Dừng khẩn cấp hai động cơ.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       motors_.Stop(); return true;
                   });
 
         m.AddTool("self.robot.wiggle","Lắc người nhẹ để biểu cảm vui/cà khịa.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       motors_.Wiggle(); return true;
                   });
 
         m.AddTool("self.robot.dance","Cho robot nhảy/chuyển động vui ngắn.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       motors_.Dance(); display_->Manual(RobotFace::Teasing,3200); return true;
                   });
 
         m.AddTool("self.robot.distance","Đọc khoảng cách TOF050C theo mm.",
-                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
+                  PropertyList(),[this](const PropertyList&)->ReturnValue{
                       return tof_.DistanceMm();
                   });
 
