@@ -5,7 +5,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-TOKEN = 'c86b643d7a75fa037d0538a909923a1c9543c9a235629029'
+TOKEN_FILE = Path(os.environ.get(
+    "ROBOT_MAC_BRIDGE_TOKEN_FILE",
+    str(Path.home() / ".config" / "robot-ai-private" / "mac_bridge_token"),
+))
+
+def load_token():
+    token = os.environ.get("ROBOT_MAC_BRIDGE_TOKEN", "").strip()
+    if not token and TOKEN_FILE.exists():
+        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    if len(token) < 40:
+        raise RuntimeError("ROBOT_MAC_BRIDGE_TOKEN chưa được cấu hình an toàn")
+    return token
+
+TOKEN = load_token()
 ROBOT_ADMIN_PORT = 8769
 ROBOT_HELLO_PORT = 8770
 WEB_PORT = 8767

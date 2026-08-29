@@ -64,7 +64,7 @@
   "mac_bridge": {
     "http_port": 8765,
     "discovery_port": 8766,
-    "pairing_token": "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
+    "pairing_token": "runtime-secret:ROBOT_MAC_BRIDGE_TOKEN"
   },
   "release": "V6_1_SMART_FREE_FINAL_RC1",
   "persona": {

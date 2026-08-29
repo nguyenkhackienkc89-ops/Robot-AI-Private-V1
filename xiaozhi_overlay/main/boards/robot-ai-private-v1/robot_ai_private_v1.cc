@@ -11,6 +11,7 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <esp_system.h>
+#include <esp_app_desc.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
@@ -686,7 +687,7 @@ button,input{font-size:17px;padding:11px;margin:4px;border-radius:9px;border:1px
 button{background:#eaf5ff;color:#0a1724}.stop{background:#ffdddd}
 code{color:#bfeaff}
 </style></head><body>
-<h2>Tiểu Đệ · Robot AI Private V5</h2>
+<h2>Tiểu Đệ · Robot AI Private V6.8.0</h2>
 <div class="card">
 <b>Điều khiển động cơ</b><br>
 <button onclick="c('forward')">↑ Tiến</button><br>
@@ -1003,6 +1004,21 @@ private:
                 return true;
             });
 
+        m.AddTool(
+            "self.robot.health",
+            "Kiểm tra nhanh firmware và phần cứng robot: phiên bản, profile máy chủ, TOF và hiệu chuẩn chuyển động.",
+            PropertyList(),
+            [this](const PropertyList&)->ReturnValue{
+                const esp_app_desc_t* app=esp_app_get_description();
+                Settings brain("robot_brain",false);
+                std::string profile=brain.GetString("server_profile","private");
+                return std::string("fw=")+(app ? app->version : "unknown")+
+                       " profile="+profile+
+                       " tof_ready="+(tof_.Ready() ? "true" : "false")+
+                       " distance_mm="+std::to_string(tof_.DistanceMm())+
+                       " spin360_ms="+std::to_string(motors_.Spin360Ms())+
+                       " stop_mm="+std::to_string(motors_.StopDistanceMm());
+            });
 
         m.AddTool(
             "self.robot.server_profile",

@@ -10,9 +10,13 @@ services:
       - seccomp:unconfined
     environment:
       - TZ=Asia/Ho_Chi_Minh
+      - ROBOT_MAC_BRIDGE_TOKEN=${ROBOT_MAC_BRIDGE_TOKEN}
+      - ROBOT_MAC_BRIDGE_URL=http://host.docker.internal:8765/command
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/opt/xiaozhi-esp32-server/data
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
@@ -20,6 +24,7 @@ services:
       - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
       - ./server_plugins/play_radio_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/play_radio_private.py:ro
       - ./server_plugins/brain_mode_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/brain_mode_private.py:ro
+      - ./server_plugins/mac_command_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/mac_command_private.py:ro
       - ./server_providers/edge_stream_private.py:/opt/xiaozhi-esp32-server/core/providers/tts/edge_stream_private.py:ro
 
 

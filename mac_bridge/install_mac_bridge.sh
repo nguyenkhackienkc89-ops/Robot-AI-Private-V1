@@ -6,6 +6,24 @@ if [ -z "$PY" ]; then
   echo "Chưa có python3. Có thể cài bằng Homebrew: brew install python"
   exit 1
 fi
+
+SECRET_DIR="$HOME/.config/robot-ai-private"
+TOKEN_FILE="$SECRET_DIR/mac_bridge_token"
+mkdir -p "$SECRET_DIR"
+chmod 700 "$SECRET_DIR"
+
+if [ ! -s "$TOKEN_FILE" ]; then
+  if [ -n "${ROBOT_MAC_BRIDGE_TOKEN:-}" ]; then
+    printf '%s' "$ROBOT_MAC_BRIDGE_TOKEN" > "$TOKEN_FILE"
+  else
+    python3 - <<'PY' > "$TOKEN_FILE"
+import secrets
+print(secrets.token_urlsafe(48), end="")
+PY
+  fi
+fi
+chmod 600 "$TOKEN_FILE"
+
 DEST="$HOME/Library/Application Support/RobotMacBridge"
 mkdir -p "$DEST"
 cp "$HERE/robot_mac_bridge.py" "$DEST/"
@@ -21,6 +39,9 @@ cat > "$PLIST" <<EOF
 <string>$PY</string>
 <string>$DEST/robot_mac_bridge.py</string>
 </array>
+<key>EnvironmentVariables</key><dict>
+<key>ROBOT_MAC_BRIDGE_TOKEN_FILE</key><string>$TOKEN_FILE</string>
+</dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><true/>
 <key>StandardOutPath</key><string>$HOME/Library/Logs/RobotMacBridge.log</string>

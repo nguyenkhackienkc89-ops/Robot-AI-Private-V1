@@ -2,7 +2,21 @@
 import json, os, socket, subprocess, threading, urllib.parse, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-TOKEN = "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
+TOKEN_FILE = os.environ.get(
+    "ROBOT_MAC_BRIDGE_TOKEN_FILE",
+    os.path.expanduser("~/.config/robot-ai-private/mac_bridge_token")
+)
+
+def _load_token():
+    token = os.environ.get("ROBOT_MAC_BRIDGE_TOKEN", "").strip()
+    if not token and os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, encoding="utf-8") as f:
+            token = f.read().strip()
+    if len(token) < 40:
+        raise RuntimeError("ROBOT_MAC_BRIDGE_TOKEN chưa được cấu hình an toàn")
+    return token
+
+TOKEN = _load_token()
 HTTP_PORT = 8765
 DISCOVERY_PORT = 8766
 ROBOT_ADMIN_PORT = 8769

@@ -32,6 +32,7 @@ jobs:
         env:
           ANYWHERE_OTA_URL_SECRET: ${{ secrets.V68_ANYWHERE_OTA_URL }}
           ANYWHERE_OTA_URL_INPUT: ${{ inputs.anywhere_ota_url }}
+          MAC_BRIDGE_TOKEN_SECRET: ${{ secrets.V68_MAC_BRIDGE_TOKEN }}
         run: |
           IP="${{ inputs.private_server_ip }}"
           VER="${{ inputs.version }}"
@@ -40,12 +41,15 @@ jobs:
             ANY="$ANYWHERE_OTA_URL_SECRET"
           fi
           echo "::add-mask::$ANY"
+          echo "::add-mask::$MAC_BRIDGE_TOKEN_SECRET"
           echo "$IP" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || exit 1
           echo "$VER" | grep -Eq '^[0-9][0-9A-Za-z._-]*$' || exit 1
           echo "$ANY" | grep -Eq '^https://[A-Za-z0-9.-]+/r/[A-Za-z0-9_-]{32,96}/xiaozhi/ota/$' || exit 1
+          echo "$MAC_BRIDGE_TOKEN_SECRET" | grep -Eq '^[A-Za-z0-9_-]{40,128}$' || exit 1
           echo "PRIVATE_OTA_URL=http://$IP:8003/xiaozhi/ota/" >> "$GITHUB_ENV"
           echo "ANYWHERE_OTA_URL=$ANY" >> "$GITHUB_ENV"
           echo "FW_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "MAC_BRIDGE_TOKEN_VALUE=$MAC_BRIDGE_TOKEN_SECRET" >> "$GITHUB_ENV"
 
       - name: Lock private OTA URL
         shell: bash
@@ -79,6 +83,22 @@ jobs:
           p.write_text(s,encoding="utf-8")
           PY
 
+      - name: Inject private Mac Bridge token
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          p=Path("xiaozhi_overlay/main/boards/robot-ai-private-v1/config.h")
+          s=p.read_text(encoding="utf-8")
+          token=os.environ["MAC_BRIDGE_TOKEN_VALUE"]
+          anchor='#ifndef MAC_BRIDGE_TOKEN\n#error "MAC_BRIDGE_TOKEN must be injected at build time"\n#endif\n'
+          repl=f'#define MAC_BRIDGE_TOKEN "{token}"\n'
+          if anchor not in s:
+              raise SystemExit("Không thấy MAC_BRIDGE_TOKEN injection anchor")
+          p.write_text(s.replace(anchor,repl,1),encoding="utf-8")
+          PY
+
       - name: Checkout latest stable XiaoZhi
         uses: actions/checkout@v4
         with:
@@ -108,7 +128,7 @@ jobs:
           print("PROJECT_VER =", os.environ["FW_VERSION"])
           PY
 
-      - name: Install V5 board and parity UX patches
+      - name: Install Robot AI V6.8 board and product patches
         run: |
           python tools/install_into_xiaozhi.py "$GITHUB_WORKSPACE/xiaozhi"
           grep -q 'config.ssid_prefix = "TieuDe"' xiaozhi/main/boards/common/wifi_board.cc
@@ -126,7 +146,7 @@ jobs:
           test -f build/merged-binary.bin
           test -f build/xiaozhi.bin
 
-      - name: Verify V5 feature markers
+      - name: Verify V6.8 product feature markers
         shell: bash
         run: |
           BIN=xiaozhi/build/merged-binary.bin
@@ -137,6 +157,7 @@ jobs:
           grep -a -q "$ANYWHERE_OTA_URL" "$BIN"
           grep -a -q "api.tenclass.net/xiaozhi/ota/" "$BIN"
           grep -a -q "self.robot.settings" "$BIN"
+          grep -a -q "self.robot.health" "$BIN"
           grep -a -q "self.robot.distance" "$BIN"
           grep -a -q "self.mac.command" "$BIN"
           grep -a -q "TieuDe" "$BIN"

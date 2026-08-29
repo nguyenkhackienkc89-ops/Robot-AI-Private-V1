@@ -1,4 +1,5 @@
 private_server_mac/dual_brain/.env
+private_server_mac/.env
 private_server_mac/dual_brain/state.json
 private_server_mac/anywhere_gateway/.env
 private_server_mac/anywhere_gateway/nginx.conf

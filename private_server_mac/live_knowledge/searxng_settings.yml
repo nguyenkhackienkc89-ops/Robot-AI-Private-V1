@@ -13,7 +13,7 @@ search:
 server:
   bind_address: "0.0.0.0"
   port: 8080
-  secret_key: "d5620e123d01dcd9d798a400ad834449fb26f28edb0eea19d748198f3decad27"
+  secret_key: "robot-ai-private-runtime-placeholder"
   limiter: false
   image_proxy: false
 

@@ -67,6 +67,9 @@
 #define ROBOT_PUBLIC_XIAOZHI_OTA_URL "https://api.tenclass.net/xiaozhi/ota/"
 // V6.8 build workflow injects ROBOT_ANYWHERE_OTA_URL when a public gateway URL is supplied.
 // Do not hard-code a real secret URL in source control.
-#define MAC_BRIDGE_TOKEN "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
+// Injected at build time from GitHub secret V68_MAC_BRIDGE_TOKEN.
+#ifndef MAC_BRIDGE_TOKEN
+#error "MAC_BRIDGE_TOKEN must be injected at build time"
+#endif
 
 #endif
