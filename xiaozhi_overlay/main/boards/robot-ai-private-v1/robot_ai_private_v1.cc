@@ -909,7 +909,7 @@ private:
             "backward=lùi, left=quay trái, right=quay phải, "
             "spin_left=quay một vòng trái, spin_right=quay một vòng phải, stop=dừng. "
             "Nếu người dùng nói quay 1 vòng/quay một vòng thì dùng spin_right.",
-            PropertyList(std::vector<Property>{
+            PropertyList({
                 Property("action",kPropertyTypeString),
                 Property("speed",kPropertyTypeInteger,20,65),
                 Property("duration_ms",kPropertyTypeInteger,80,3200)
@@ -929,29 +929,29 @@ private:
             });
 
         m.AddTool("self.robot.stop","Dừng khẩn cấp hai động cơ.",
-                  PropertyList(),[this](const PropertyList&)->ReturnValue{
+                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
                       motors_.Stop(); return true;
                   });
 
         m.AddTool("self.robot.wiggle","Lắc người nhẹ để biểu cảm vui/cà khịa.",
-                  PropertyList(),[this](const PropertyList&)->ReturnValue{
+                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
                       motors_.Wiggle(); return true;
                   });
 
         m.AddTool("self.robot.dance","Cho robot nhảy/chuyển động vui ngắn.",
-                  PropertyList(),[this](const PropertyList&)->ReturnValue{
+                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
                       motors_.Dance(); display_->Manual(RobotFace::Teasing,3200); return true;
                   });
 
         m.AddTool("self.robot.distance","Đọc khoảng cách TOF050C theo mm.",
-                  PropertyList(),[this](const PropertyList&)->ReturnValue{
+                  PropertyList({}),[this](const PropertyList&)->ReturnValue{
                       return tof_.DistanceMm();
                   });
 
         m.AddTool(
             "self.robot.calibrate_spin360",
             "Hiệu chuẩn thời gian quay 360 độ. milliseconds 600..3000; lưu NVS.",
-            PropertyList(std::vector<Property>{Property("milliseconds",kPropertyTypeInteger,600,3000)}),
+            PropertyList({Property("milliseconds",kPropertyTypeInteger,600,3000)}),
             [this](const PropertyList& p)->ReturnValue{
                 motors_.SetSpin360Ms(p["milliseconds"].value<int>());
                 return motors_.Spin360Ms();
@@ -961,7 +961,7 @@ private:
         m.AddTool(
             "self.robot.settings",
             "Đọc hoặc thay đổi hiệu chuẩn robot. action: status, set_spin360_ms, set_stop_distance_mm.",
-            PropertyList(std::vector<Property>{
+            PropertyList({
                 Property("action",kPropertyTypeString),
                 Property("value",kPropertyTypeInteger,0,4000)
             }),
@@ -984,7 +984,7 @@ private:
         m.AddTool(
             "self.robot.face",
             "Biểu cảm: idle, listen, talk, think, tease, surprise, angry, music.",
-            PropertyList(std::vector<Property>{Property("mode",kPropertyTypeString)}),
+            PropertyList({Property("mode",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 display_->Manual(ParseFace(p["mode"].value<std::string>()),2800);
                 return true;
@@ -993,7 +993,7 @@ private:
         m.AddTool(
             "self.robot.lights",
             "Đèn trang trí: off, left, right, both.",
-            PropertyList(std::vector<Property>{Property("mode",kPropertyTypeString)}),
+            PropertyList({Property("mode",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 auto s=p["mode"].value<std::string>();
                 if(s=="left") lights_.Set(true,false);
@@ -1006,9 +1006,10 @@ private:
 
         m.AddTool(
             "self.robot.server_profile",
-            "Chuyển máy chủ hội thoại. action: status, private, public_xiaozhi. "
-            "private dùng máy chủ riêng trên Mac; public_xiaozhi dùng Xiaozhi công cộng và robot sẽ khởi động lại.",
-            PropertyList(std::vector<Property>{Property("action",kPropertyTypeString)}),
+            "Chuyển máy chủ hội thoại. action: status, private, anywhere, public_xiaozhi. "
+            "private dùng Mac trong LAN; anywhere dùng máy chủ riêng qua Internet; "
+            "public_xiaozhi dùng Xiaozhi công cộng. Đổi profile sẽ khởi động lại.",
+            PropertyList({Property("action",kPropertyTypeString)}),
             [this](const PropertyList& p)->ReturnValue{
                 std::string action=p["action"].value<std::string>();
                 Settings brain("robot_brain", action!="status");
@@ -1018,13 +1019,27 @@ private:
                     Settings wifi("wifi",false);
                     std::string ota=wifi.GetString("ota_url","");
                     return std::string("profile=")+current+
-                           " ota_override="+(ota.empty() ? std::string("<default-private>") : ota);
+                           " ota_override="+(ota.empty() ? std::string("<default-private>") : ota)+
+                           " anywhere_configured="+
+#ifdef ROBOT_ANYWHERE_OTA_URL
+                           std::string("true");
+#else
+                           std::string("false");
+#endif
                 }
 
                 if(action=="private"){
                     Settings wifi("wifi",true);
                     wifi.EraseKey("ota_url");
                     brain.SetString("server_profile","private");
+                } else if(action=="anywhere"){
+#ifdef ROBOT_ANYWHERE_OTA_URL
+                    Settings wifi("wifi",true);
+                    wifi.SetString("ota_url",ROBOT_ANYWHERE_OTA_URL);
+                    brain.SetString("server_profile","anywhere");
+#else
+                    return std::string("anywhere_not_configured");
+#endif
                 } else if(action=="public_xiaozhi"){
                     Settings wifi("wifi",true);
                     wifi.SetString("ota_url",ROBOT_PUBLIC_XIAOZHI_OTA_URL);
@@ -1048,7 +1063,7 @@ private:
             "open_finder, open_app, type_text, volume_up, volume_down, play_pause, "
             "play_music_youtube, radio_vov1, radio_vov2, radio_vov_gt. "
             "Không hỗ trợ xóa file, shell tùy ý, mật khẩu hay thanh toán.",
-            PropertyList(std::vector<Property>{
+            PropertyList({
                 Property("action",kPropertyTypeString),
                 Property("value",kPropertyTypeString)
             }),

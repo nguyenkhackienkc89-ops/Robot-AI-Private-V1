@@ -1,0 +1,13 @@
+# Merge into private_server_mac/docker-compose.yml; do not replace live compose.
+services:
+  anywhere-gateway:
+    image: nginx:1.27-alpine
+    container_name: robot-ai-anywhere-gateway
+    restart: unless-stopped
+    depends_on:
+      - xiaozhi-private
+    volumes:
+      - ./anywhere_gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:11438:8080"
+    mem_limit: 96m

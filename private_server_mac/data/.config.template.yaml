@@ -180,11 +180,33 @@ prompt: |
   - Nếu trạng thái báo `block_nonfree_cloud=true`, tuyệt đối không tự dùng cloud khác ngoài preset GLM-4-Flash.
   - Cùng một nhân vật và TTS được giữ ở lớp private server, vì vậy đổi não không đổi Đại Ca–Tiểu Đệ và không đổi giọng NamMinh.
 
+
+  PHẢN HỒI NHANH V6.1.1
+  - Não nhà Qwen mặc định chạy bằng Ollama native API với `think=false`.
+  - Không dành 10–20 giây suy luận ẩn cho hội thoại thường, lệnh motor hoặc lệnh Mac.
+  - Nếu Đại Ca nói rõ “dùng não nhà suy luận sâu”, “não nhà nghĩ kỹ” hoặc `/think`:
+    Router mới bật thinking cho đúng lượt đó.
+  - Nếu Đại Ca nói “trả lời nhanh”, “không suy luận” hoặc `/no_think`:
+    Router bắt buộc thinking=false.
+  - Chế độ AUTO vẫn ưu tiên GLM-4-Flash cho kiến thức nếu đã cấu hình; Qwen local là não phản xạ nhanh, riêng tư và dự phòng.
+  - Model local được tự dò: ưu tiên `tieude:qwen3-8b`, sau đó `qwen3:8b`.
+  - Qwen được giữ nóng trong RAM khoảng 30 phút để giảm thời gian nạp model lại.
+
+
+  QUẢN LÝ RAM V6.2
+  - Não nhà chính ưu tiên Qwen3.5 9B; Qwen3 8B chỉ dự phòng trên SSD.
+  - Router chỉ cho một model Qwen nằm trong RAM tại một thời điểm.
+  - Trước khi nạp model mục tiêu, tự unload Qwen khác đang resident.
+  - Nếu Qwen3.5 lỗi và cần fallback, unload Qwen3.5 trước rồi mới nạp Qwen3 8B.
+  - Qwen3.5 chính giữ nóng khoảng 10 phút; fallback khoảng 2 phút.
+  - Context local mặc định 8192 token để hạn chế áp lực RAM/swap.
+  - think=false vẫn là mặc định; chỉ thinking sâu khi Đại Ca yêu cầu rõ.
+
 selected_module:
   VAD: SileroVAD
   ASR: FunASR
   LLM: DualBrainLLM
-  TTS: EdgeTTS
+  TTS: EdgeStreamPrivate
   Memory: nomem
   Intent: function_call
 
@@ -202,10 +224,17 @@ LLM:
     base_url: http://dual-brain-router:11435
 
 TTS:
-  EdgeTTS:
-    type: edge
+  EdgeStreamPrivate:
+    type: edge_stream_private
     voice: vi-VN-NamMinhNeural
     output_dir: tmp/
+    rate: 0
+    pitch: 0
+    volume: 50
+    first_chunk_chars: 26
+    instant_ack_enabled: false
+    instant_ack_file: /opt/xiaozhi-esp32-server/data/tts_cache/namminh_da_dai_ca.mp3
+    metrics_file: /opt/xiaozhi-esp32-server/data/tts_latency_v66.jsonl
 
 plugins:
   play_music:
@@ -214,3 +243,11 @@ plugins:
       - .mp3
       - .wav
     refresh_time: 20
+
+VAD:
+  SileroVAD:
+    type: silero
+    model_dir: models/snakers4_silero-vad
+    threshold: 0.5
+    threshold_low: 0.2
+    min_silence_duration_ms: 550

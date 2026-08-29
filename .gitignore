@@ -1,2 +1,12 @@
 private_server_mac/dual_brain/.env
 private_server_mac/dual_brain/state.json
+private_server_mac/anywhere_gateway/.env
+private_server_mac/anywhere_gateway/nginx.conf
+private_server_mac/data/.config.yaml
+private_server_mac/data/.config.yaml.*
+private_server_mac/backups/
+private_server_mac/data/tts_cache/
+private_server_mac/data/*.jsonl
+private_server_mac/models/
+private_server_mac/**/*.pyc
+private_server_mac/**/__pycache__/

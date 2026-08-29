@@ -5,13 +5,14 @@ services:
     restart: unless-stopped
     depends_on:
       - dual-brain-router
+      - qwen35-prewarm
     security_opt:
       - seccomp:unconfined
     environment:
       - TZ=Asia/Ho_Chi_Minh
     ports:
-      - "8000:8000"
-      - "8003:8003"
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8003:8003"
     volumes:
       - ./data:/opt/xiaozhi-esp32-server/data
       - ./models/SenseVoiceSmall/model.pt:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/model.pt
@@ -19,6 +20,7 @@ services:
       - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
       - ./server_plugins/play_radio_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/play_radio_private.py:ro
       - ./server_plugins/brain_mode_private.py:/opt/xiaozhi-esp32-server/plugins_func/functions/brain_mode_private.py:ro
+      - ./server_providers/edge_stream_private.py:/opt/xiaozhi-esp32-server/core/providers/tts/edge_stream_private.py:ro
 
 
   dual-brain-router:
@@ -27,8 +29,73 @@ services:
     restart: unless-stopped
     command: ["python", "/app/dual_brain_router.py"]
     ports:
-      - "11435:11435"
+      - "127.0.0.1:11435:11435"
     volumes:
       - ./dual_brain:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  qwen35-prewarm:
+    image: python:3.11-slim
+    container_name: robot-ai-qwen35-prewarm
+    restart: unless-stopped
+    command: ["python", "/app/prewarm_qwen35.py"]
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:31434
+      - LOCAL_PREWARM_MODEL=qwen3.5:35b-a3b-int4
+      - LOCAL_KEEP_ALIVE=30m
+      - LOCAL_NUM_CTX=4096
+      - PREWARM_INTERVAL_SECONDS=600
+    volumes:
+      - ./dual_brain:/app:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: robot-ai-searxng
+    restart: unless-stopped
+    volumes:
+      - ./live_knowledge/searxng_settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    mem_limit: 512m
+
+  live-knowledge:
+    image: python:3.11-slim
+    container_name: robot-ai-live-knowledge
+    restart: unless-stopped
+    command: ["python", "/app/live_knowledge_service.py"]
+    depends_on:
+      - searxng
+    volumes:
+      - ./live_knowledge:/app:ro
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - LIVE_SEARXNG_URL=http://searxng:8080
+      - LIVE_MAX_SOURCES=5
+      - LIVE_MIN_NEWS_SOURCES=2
+      - LIVE_SEARCH_TIMEOUT_SECONDS=5
+      - LIVE_CACHE_TTL_SECONDS=60
+      - LIVE_DEFAULT_LOCATION=
+      - LIVE_FETCH_PAGES=false
+      - PAID_SEARCH_ENABLED=false
+      - LIVE_SEARXNG_ENABLED=true
+      - LIVE_OPEN_METEO_ENABLED=true
+      - LIVE_FRANKFURTER_ENABLED=true
+      - LIVE_COINGECKO_KEYLESS_ENABLED=true
+    ports:
+      - "127.0.0.1:11437:11437"
+    mem_limit: 128m
+
+  anywhere-gateway:
+    image: nginx:1.27-alpine
+    container_name: robot-ai-anywhere-gateway
+    restart: unless-stopped
+    depends_on:
+      - xiaozhi-private
+    volumes:
+      - ./anywhere_gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:11438:8080"
+    mem_limit: 96m

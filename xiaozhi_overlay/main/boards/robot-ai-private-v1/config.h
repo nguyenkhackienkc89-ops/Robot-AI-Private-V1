@@ -65,6 +65,8 @@
 #define ROBOT_ADMIN_PORT 8769
 #define ROBOT_ADMIN_HELLO_PORT 8770
 #define ROBOT_PUBLIC_XIAOZHI_OTA_URL "https://api.tenclass.net/xiaozhi/ota/"
+// V6.8 build workflow injects ROBOT_ANYWHERE_OTA_URL when a public gateway URL is supplied.
+// Do not hard-code a real secret URL in source control.
 #define MAC_BRIDGE_TOKEN "c86b643d7a75fa037d0538a909923a1c9543c9a235629029"
 
 #endif

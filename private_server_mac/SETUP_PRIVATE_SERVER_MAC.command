@@ -180,3 +180,12 @@ echo "Muốn bật não mây GLM-4-Flash:"
 echo "  $HERE/dual_brain/SET_FREE_GLM_BRAIN.command"
 echo "Control Center:"
 echo "  $HERE/../control_center/START_CONTROL_CENTER.command"
+
+echo
+echo "========================================================"
+echo " FAST RESPONSE V6.1.1"
+echo "========================================================"
+"$HERE/dual_brain/APPLY_FAST_RESPONSE_PATCH.command" || true
+"$HERE/dual_brain/PREWARM_QWEN.command" || true
+echo "Test tốc độ bất kỳ lúc nào:"
+echo "  $HERE/dual_brain/TEST_QWEN_FAST.command"
