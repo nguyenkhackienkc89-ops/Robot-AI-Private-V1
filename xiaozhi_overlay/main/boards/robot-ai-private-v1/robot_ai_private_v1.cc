@@ -37,6 +37,7 @@
 #include <string>
 #include <cstring>
 #include <cstdlib>
+#include <mutex>
 #include <unistd.h>
 
 #define TAG "RobotPrivateV1"
@@ -519,10 +520,47 @@ public:
     void Init(MotorController* motors, Tof050c* tof) {
         motors_ = motors;
         tof_ = tof;
-        xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->ListenLoop(); },
-                    "robot_admin", 4096, this, 3, &listen_task_);
-        xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->HelloLoop(); },
-                    "robot_hello", 3072, this, 2, &hello_task_);
+    }
+
+    bool Start() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (started_) {
+            ESP_LOGI(TAG, "Robot admin UDP already started");
+            return true;
+        }
+
+        stop_requested_.store(false);
+        listen_socket_.store(-1);
+        if (xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->ListenLoop(); },
+                        "robot_admin", 4096, this, 3, &listen_task_) != pdPASS) {
+            listen_task_ = nullptr;
+            ESP_LOGW(TAG, "Robot admin UDP listener task failed to start");
+            return false;
+        }
+
+        if (xTaskCreate([](void* p){ static_cast<RobotAdminUdp*>(p)->HelloLoop(); },
+                        "robot_hello", 3072, this, 2, &hello_task_) != pdPASS) {
+            stop_requested_.store(true);
+            listen_task_ = nullptr;
+            hello_task_ = nullptr;
+            ESP_LOGW(TAG, "Robot admin UDP hello task failed to start");
+            return false;
+        }
+
+        started_ = true;
+        ESP_LOGI(TAG, "Robot admin UDP started");
+        return true;
+    }
+
+    void Stop() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!started_ && !listen_task_ && !hello_task_) return;
+
+        stop_requested_.store(true);
+        int sock = listen_socket_.exchange(-1);
+        if (sock >= 0) close(sock);
+        started_ = false;
+        ESP_LOGI(TAG, "Robot admin UDP stopping");
     }
 
 private:
@@ -530,6 +568,10 @@ private:
     Tof050c* tof_ = nullptr;
     TaskHandle_t listen_task_ = nullptr;
     TaskHandle_t hello_task_ = nullptr;
+    std::mutex mutex_;
+    bool started_ = false;
+    std::atomic<bool> stop_requested_{false};
+    std::atomic<int> listen_socket_{-1};
 
     static bool StartsWith(const std::string& s, const std::string& p) {
         return s.rfind(p, 0) == 0;
@@ -582,7 +624,15 @@ private:
 
     void ListenLoop() {
         int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-        if (sock < 0) { vTaskDelete(nullptr); return; }
+        if (sock < 0) {
+            listen_task_ = nullptr;
+            vTaskDelete(nullptr);
+            return;
+        }
+        listen_socket_.store(sock);
+
+        struct timeval tv = {1, 0};
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
         sockaddr_in addr = {};
         addr.sin_family = AF_INET;
@@ -590,10 +640,14 @@ private:
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
         if (bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-            close(sock); vTaskDelete(nullptr); return;
+            close(sock);
+            listen_socket_.store(-1);
+            listen_task_ = nullptr;
+            vTaskDelete(nullptr);
+            return;
         }
 
-        for (;;) {
+        while (!stop_requested_.load()) {
             char buf[256] = {0};
             sockaddr_in src = {};
             socklen_t sl = sizeof(src);
@@ -603,10 +657,15 @@ private:
             std::string reply = Handle(std::string(buf));
             sendto(sock, reply.data(), reply.size(), 0, (sockaddr*)&src, sl);
         }
+
+        int current = listen_socket_.exchange(-1);
+        if (current >= 0) close(current);
+        listen_task_ = nullptr;
+        vTaskDelete(nullptr);
     }
 
     void HelloLoop() {
-        for (;;) {
+        while (!stop_requested_.load()) {
             int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
             if (sock >= 0) {
                 int yes = 1;
@@ -620,8 +679,12 @@ private:
                 sendto(sock, msg.data(), msg.size(), 0, (sockaddr*)&dst, sizeof(dst));
                 close(sock);
             }
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            for (int i = 0; i < 50 && !stop_requested_.load(); ++i) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
         }
+        hello_task_ = nullptr;
+        vTaskDelete(nullptr);
     }
 };
 
@@ -633,6 +696,14 @@ public:
         motors_ = motors;
         tof_ = tof;
         instance_ = this;
+    }
+
+    bool Start() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (server_) {
+            ESP_LOGI(TAG, "Robot device web already started");
+            return true;
+        }
 
         httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
         cfg.server_port = 8080;
@@ -642,7 +713,8 @@ public:
 
         if (httpd_start(&server_, &cfg) != ESP_OK) {
             ESP_LOGW(TAG, "Robot web control failed to start");
-            return;
+            server_ = nullptr;
+            return false;
         }
 
         Register("/", HTTP_GET, Root);
@@ -650,6 +722,16 @@ public:
         Register("/cmd", HTTP_GET, Command);
         Register("/set", HTTP_GET, Settings);
         ESP_LOGI(TAG, "Robot device web control: port 8080");
+        return true;
+    }
+
+    void Stop() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!server_) return;
+        httpd_handle_t server = server_;
+        server_ = nullptr;
+        httpd_stop(server);
+        ESP_LOGI(TAG, "Robot device web stopped");
     }
 
 private:
@@ -657,6 +739,7 @@ private:
     httpd_handle_t server_ = nullptr;
     MotorController* motors_ = nullptr;
     Tof050c* tof_ = nullptr;
+    std::mutex mutex_;
 
     void Register(const char* uri, httpd_method_t method, esp_err_t (*handler)(httpd_req_t*)) {
         httpd_uri_t u = {};
@@ -780,6 +863,16 @@ public:
         GetBacklight()->RestoreBrightness();
     }
 
+    void SetNetworkEventCallback(NetworkEventCallback callback) override {
+        app_network_event_callback_ = std::move(callback);
+        WifiBoard::SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
+            HandleNetworkLifecycleEvent(event, data);
+            if (app_network_event_callback_) {
+                app_network_event_callback_(event, data);
+            }
+        });
+    }
+
     AudioCodec* GetAudioCodec() override {
         static NoAudioCodecSimplex codec(
             AUDIO_INPUT_SAMPLE_RATE,
@@ -813,6 +906,95 @@ private:
     RobotAdminUdp admin_;
     RobotDeviceWeb device_web_;
     TaskHandle_t face_task_=nullptr;
+    NetworkEventCallback app_network_event_callback_ = nullptr;
+    std::mutex network_services_mutex_;
+
+    enum class NetworkServiceState {
+        NETWORK_STACK_UNINITIALIZED,
+        NETWORK_STACK_READY,
+        WIFI_STARTED,
+        INTERFACE_READY,
+        IP_READY,
+        SERVICES_STARTING,
+        SERVICES_STARTED,
+        SERVICES_DEGRADED
+    };
+    NetworkServiceState network_service_state_ = NetworkServiceState::NETWORK_STACK_UNINITIALIZED;
+
+    static const char* NetworkServiceStateName(NetworkServiceState state) {
+        switch (state) {
+            case NetworkServiceState::NETWORK_STACK_UNINITIALIZED: return "NETWORK_STACK_UNINITIALIZED";
+            case NetworkServiceState::NETWORK_STACK_READY: return "NETWORK_STACK_READY";
+            case NetworkServiceState::WIFI_STARTED: return "WIFI_STARTED";
+            case NetworkServiceState::INTERFACE_READY: return "INTERFACE_READY";
+            case NetworkServiceState::IP_READY: return "IP_READY";
+            case NetworkServiceState::SERVICES_STARTING: return "SERVICES_STARTING";
+            case NetworkServiceState::SERVICES_STARTED: return "SERVICES_STARTED";
+            case NetworkServiceState::SERVICES_DEGRADED: return "SERVICES_DEGRADED";
+        }
+        return "UNKNOWN";
+    }
+
+    void SetNetworkServiceState(NetworkServiceState state) {
+        if (network_service_state_ == state) return;
+        ESP_LOGI(TAG, "Robot network lifecycle: %s -> %s",
+                 NetworkServiceStateName(network_service_state_),
+                 NetworkServiceStateName(state));
+        network_service_state_ = state;
+    }
+
+    void HandleNetworkLifecycleEvent(NetworkEvent event, const std::string& data) {
+        switch (event) {
+            case NetworkEvent::Scanning:
+                SetNetworkServiceState(NetworkServiceState::NETWORK_STACK_READY);
+                break;
+            case NetworkEvent::Connecting:
+                SetNetworkServiceState(NetworkServiceState::WIFI_STARTED);
+                break;
+            case NetworkEvent::Connected:
+                ESP_LOGI(TAG, "STA IP-ready; starting robot network services for %s", data.c_str());
+                SetNetworkServiceState(NetworkServiceState::IP_READY);
+                StartNetworkServices();
+                break;
+            case NetworkEvent::WifiConfigModeEnter:
+                ESP_LOGI(TAG, "SoftAP-ready; starting robot network services in config mode");
+                SetNetworkServiceState(NetworkServiceState::INTERFACE_READY);
+                StartNetworkServices();
+                break;
+            case NetworkEvent::WifiConfigModeExit:
+                StopNetworkServices();
+                SetNetworkServiceState(NetworkServiceState::WIFI_STARTED);
+                break;
+            case NetworkEvent::Disconnected:
+                if (!IsInWifiConfigMode()) {
+                    StopNetworkServices();
+                }
+                SetNetworkServiceState(NetworkServiceState::WIFI_STARTED);
+                break;
+            default:
+                break;
+        }
+    }
+
+    void StartNetworkServices() {
+        std::lock_guard<std::mutex> lock(network_services_mutex_);
+        if (network_service_state_ == NetworkServiceState::SERVICES_STARTED) {
+            ESP_LOGI(TAG, "Robot network services already started");
+            return;
+        }
+        SetNetworkServiceState(NetworkServiceState::SERVICES_STARTING);
+        bool udp_ok = admin_.Start();
+        bool web_ok = device_web_.Start();
+        SetNetworkServiceState((udp_ok && web_ok)
+            ? NetworkServiceState::SERVICES_STARTED
+            : NetworkServiceState::SERVICES_DEGRADED);
+    }
+
+    void StopNetworkServices() {
+        std::lock_guard<std::mutex> lock(network_services_mutex_);
+        device_web_.Stop();
+        admin_.Stop();
+    }
 
     void InitializeSpi(){
         spi_bus_config_t b={};
