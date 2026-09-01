@@ -194,7 +194,15 @@ jobs:
           cp xiaozhi/build/merged-binary.bin out/Robot_AI_Private_V6_8_merged.bin
           cp xiaozhi/build/xiaozhi.bin out/xiaozhi.bin
           cp xiaozhi/build/xiaozhi.bin "out/robot-ai-private-v1_${FW_VERSION}.bin"
+          cp xiaozhi/build/xiaozhi.elf out/
+          cp xiaozhi/build/xiaozhi.map out/ 2>/dev/null || true
+          cp xiaozhi/sdkconfig out/
           cp xiaozhi/build/flasher_args.json out/ 2>/dev/null || true
+          cp xiaozhi/build/project_description.json out/ 2>/dev/null || true
+          cp xiaozhi/build/partition_table/partition-table.bin out/ 2>/dev/null || true
+          cp xiaozhi/build/bootloader/bootloader.bin out/ 2>/dev/null || true
+          printf '%s\n' "$GITHUB_RUN_ID" > out/WORKFLOW_RUN_ID.txt
+          printf '%s\n' "$GITHUB_SHA" > out/FIRMWARE_LOGIC_COMMIT.txt
           printf '%s\n' "$PRIVATE_OTA_URL" > out/PRIVATE_OTA_URL.txt
 
           cp web_flash/index.html out/web_flash/index.html
@@ -210,7 +218,7 @@ jobs:
           }
           open("out/web_flash/manifest.json","w").write(json.dumps(p,ensure_ascii=False,indent=2))
           PY
-          sha256sum out/*.bin > out/SHA256.txt
+          find out -maxdepth 1 -type f ! -name SHA256.txt -exec sha256sum {} \; > out/SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
